@@ -1,430 +1,310 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ChatMessage, getHost1Response, getHost2Response, generateDiscussionSummary } from '../services/gemini';
-import { HandRaisedIcon, PaperAirplaneIcon, MicrophoneIcon, XMarkIcon } from '@heroicons/react/24/solid';
-import 'regenerator-runtime/runtime';
-import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { 
+  PaperAirplaneIcon, 
+  SpeakerWaveIcon,
+  StopIcon,
+  UserIcon,
+  SparklesIcon
+} from '@heroicons/react/24/outline';
+import { geminiService } from '../services/gemini';
+import { useVoiceAI } from '../hooks/useVoiceAI';
+
+interface Message {
+  id: string;
+  content: string;
+  sender: 'user' | 'alex' | 'jordan';
+  timestamp: Date;
+  isTyping?: boolean;
+}
+
+const discussionTopics: Record<string, { title: string; description: string; context: string }> = {
+  '1': {
+    title: 'The Future of Artificial Intelligence',
+    description: 'Exploring the potential impacts and ethical considerations of AI development',
+    context: 'This discussion focuses on AI development, ethics, future implications, and societal impact.'
+  },
+  '2': {
+    title: 'Climate Change Solutions',
+    description: 'Discussing innovative approaches to combat climate change',
+    context: 'This discussion explores climate change solutions, environmental policy, and sustainable technologies.'
+  },
+  '3': {
+    title: 'Space Exploration and Colonization',
+    description: 'The challenges and opportunities of human space exploration',
+    context: 'This discussion covers space exploration, Mars colonization, space technology, and the future of humanity in space.'
+  }
+};
 
 export default function DiscussionPage() {
   const { topicId } = useParams<{ topicId: string }>();
-  const navigate = useNavigate();
-  const [topic, setTopic] = useState(topicId ? decodeURIComponent(topicId) : 'General Discussion');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [userInput, setUserInput] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [discussionStarted, setDiscussionStarted] = useState(false);
-  const [discussionEnded, setDiscussionEnded] = useState(false);
-  const [summary, setSummary] = useState({ summary: '', keyPoints: [''], transcript: '' });
-  const [handRaised, setHandRaised] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(420); // 7 minutes in seconds
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const { voiceState, speak, stopAudio, clearQueue, isAvailable: isVoiceAvailable } = useVoiceAI();
 
-  const {
-    transcript,
-    listening,
-    resetTranscript,
-    browserSupportsSpeechRecognition
-  } = useSpeechRecognition();
-
-  // Scroll to bottom of messages
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const topic = topicId ? discussionTopics[topicId] : null;
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Set transcript to user input when speech recognition is active
-  useEffect(() => {
-    if (listening) {
-      setUserInput(transcript);
-    }
-  }, [transcript, listening]);
-
-  // Start the discussion when the page loads
-  useEffect(() => {
-    if (!discussionStarted && !discussionEnded) {
+    if (topic && !discussionStarted) {
       startDiscussion();
     }
-  }, []);
+  }, [topic, discussionStarted]);
 
-  // Timer countdown
-  useEffect(() => {
-    if (discussionStarted && !discussionEnded) {
-      timerRef.current = setInterval(() => {
-        setTimeRemaining((prev) => {
-          if (prev <= 1) {
-            endDiscussion();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+  const startDiscussion = async () => {
+    if (!topic) return;
+
+    setDiscussionStarted(true);
+    
+    // Add welcome message from Alex
+    const welcomeMessage: Message = {
+      id: Date.now().toString(),
+      content: `Welcome to our discussion on "${topic.title}"! I'm Alex, and I'll be exploring this topic with Jordan. Feel free to jump in with your thoughts anytime.`,
+      sender: 'alex',
+      timestamp: new Date()
+    };
+
+    setMessages([welcomeMessage]);
+
+    // Speak the welcome message if voice is available
+    if (isVoiceAvailable) {
+      await speak(welcomeMessage.content, 'alex');
     }
 
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, [discussionStarted, discussionEnded]);
+    // Add Jordan's opening response after a delay
+    setTimeout(async () => {
+      try {
+        const jordanResponse = await geminiService.getHost2Response(
+          [{ role: 'host1', content: welcomeMessage.content }],
+          topic.title
+        );
 
-  // Format time remaining
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        const jordanMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: jordanResponse,
+          sender: 'jordan',
+          timestamp: new Date()
+        };
+
+        setMessages(prev => [...prev, jordanMessage]);
+
+        if (isVoiceAvailable) {
+          await speak(jordanResponse, 'jordan');
+        }
+      } catch (error) {
+        console.error('Error getting Jordan response:', error);
+      }
+    }, 2000);
   };
 
-  // Start the discussion
-  const startDiscussion = async () => {
+  const handleSendMessage = async () => {
+    if (!inputMessage.trim() || isLoading || !topic) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      content: inputMessage.trim(),
+      sender: 'user',
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputMessage('');
     setIsLoading(true);
-    setDiscussionStarted(true);
 
-    // Initial messages from hosts
-    const initialMessages: ChatMessage[] = [
-      {
-        role: 'host1',
-        content: `Welcome to our discussion on "${topic}". I'm Alex, and I'll be one of your hosts today.`
-      }
-    ];
+    try {
+      // Convert messages to the format expected by Gemini service
+      const chatMessages = messages.map(msg => ({
+        role: msg.sender === 'alex' ? 'host1' as const : 
+             msg.sender === 'jordan' ? 'host2' as const : 
+             'user' as const,
+        content: msg.content
+      }));
 
-    setMessages(initialMessages);
+      // Add the new user message
+      chatMessages.push({
+        role: 'user' as const,
+        content: userMessage.content
+      });
 
-    // Add second host message after a delay
-    setTimeout(async () => {
-      const host2Intro = {
-        role: 'host2',
-        content: `And I'm Jordan, your other host. We're excited to explore different perspectives on this topic with you.`
+      // Get Alex's response first
+      const alexResponse = await geminiService.getHost1Response(chatMessages, topic.title);
+      
+      const alexMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: alexResponse,
+        sender: 'alex',
+        timestamp: new Date()
       };
 
-      setMessages((prev) => [...prev, host2Intro]);
+      setMessages(prev => [...prev, alexMessage]);
 
-      // Add first substantive message from host1 after another delay
+      if (isVoiceAvailable) {
+        await speak(alexResponse, 'alex');
+      }
+
+      // Get Jordan's response after Alex
       setTimeout(async () => {
         try {
-          const host1Response = await getHost1Response(
-            [...initialMessages, host2Intro],
-            topic
-          );
-
-          const host1Message = {
-            role: 'host1',
-            content: host1Response
+          const updatedChatMessages = [...chatMessages, { role: 'host1' as const, content: alexResponse }];
+          const jordanResponse = await geminiService.getHost2Response(updatedChatMessages, topic.title);
+          
+          const jordanMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            content: jordanResponse,
+            sender: 'jordan',
+            timestamp: new Date()
           };
 
-          setMessages((prev) => [...prev, host1Message]);
+          setMessages(prev => [...prev, jordanMessage]);
 
-          // Add first substantive message from host2 after another delay
-          setTimeout(async () => {
-            try {
-              const host2Response = await getHost2Response(
-                [...initialMessages, host2Intro, host1Message],
-                topic
-              );
-
-              setMessages((prev) => [
-                ...prev,
-                {
-                  role: 'host2',
-                  content: host2Response
-                }
-              ]);
-              setIsLoading(false);
-            } catch (error) {
-              console.error('Error getting host2 response:', error);
-              setIsLoading(false);
-            }
-          }, 1500);
+          if (isVoiceAvailable) {
+            await speak(jordanResponse, 'jordan');
+          }
         } catch (error) {
-          console.error('Error getting host1 response:', error);
-          setIsLoading(false);
+          console.error('Error getting Jordan response:', error);
         }
       }, 1500);
-    }, 1500);
-  };
 
-  // End the discussion
-  const endDiscussion = async () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-    
-    setDiscussionEnded(true);
-    setIsLoading(true);
-
-    try {
-      const discussionSummary = await generateDiscussionSummary(messages, topic);
-      setSummary(discussionSummary);
     } catch (error) {
-      console.error('Error generating summary:', error);
-      setSummary({
-        summary: 'Unable to generate summary at this time.',
-        keyPoints: ['Summary generation failed'],
-        transcript: messages.map(msg => `${msg.role}: ${msg.content}`).join('\n')
-      });
+      console.error('Error getting AI responses:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle user input submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!userInput.trim() || isLoading) return;
-    
-    const userMessage: ChatMessage = {
-      role: 'user',
-      content: userInput
-    };
-    
-    setMessages((prev) => [...prev, userMessage]);
-    setUserInput('');
-    resetTranscript();
-    setHandRaised(false);
-    setIsLoading(true);
-    
-    // Get response from host1
-    try {
-      const host1Response = await getHost1Response([...messages, userMessage], topic);
-      
-      const host1Message: ChatMessage = {
-        role: 'host1',
-        content: host1Response
-      };
-      
-      setMessages((prev) => [...prev, host1Message]);
-      
-      // Get response from host2
-      try {
-        const host2Response = await getHost2Response([...messages, userMessage, host1Message], topic);
-        
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'host2',
-            content: host2Response
-          }
-        ]);
-      } catch (error) {
-        console.error('Error getting host2 response:', error);
-      }
-    } catch (error) {
-      console.error('Error getting host1 response:', error);
-    } finally {
-      setIsLoading(false);
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
     }
   };
 
-  // Toggle hand raised status
-  const toggleHandRaised = () => {
-    setHandRaised(!handRaised);
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Toggle speech recognition
-  const toggleSpeechRecognition = () => {
-    if (listening) {
-      SpeechRecognition.stopListening();
-    } else {
-      resetTranscript();
-      SpeechRecognition.startListening({ continuous: true });
-    }
-  };
-
-  // Start a new discussion
-  const startNewDiscussion = () => {
-    navigate('/discussion/explore');
-  };
+  if (!topic) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-4">Discussion Not Found</h1>
+          <p className="text-gray-600">The requested discussion topic could not be found.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-gray-900 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Discussion Header */}
-        <div className="bg-gray-800 rounded-t-lg p-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-white">{topic}</h1>
-            <p className="text-gray-300">
-              {discussionEnded
-                ? 'Discussion ended'
-                : discussionStarted
-                ? `Time remaining: ${formatTime(timeRemaining)}`
-                : 'Starting discussion...'}
-            </p>
-          </div>
-          {!discussionEnded && (
-            <button
-              onClick={endDiscussion}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md"
-            >
-              End Discussion
-            </button>
-          )}
-        </div>
-
-        {/* Discussion Content */}
-        {!discussionEnded ? (
-          <div className="bg-gray-800 rounded-b-lg shadow-xl overflow-hidden">
-            {/* Messages Container */}
-            <div className="h-96 overflow-y-auto p-4 bg-gray-800">
-              {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`mb-4 ${
-                    message.role === 'user'
-                      ? 'flex justify-end'
-                      : 'flex justify-start'
-                  }`}
-                >
-                  <div
-                    className={`max-w-3/4 rounded-lg px-4 py-2 ${
-                      message.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : message.role === 'host1'
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-green-600 text-white'
-                    }`}
-                  >
-                    <div className="font-bold">
-                      {message.role === 'user'
-                        ? 'You'
-                        : message.role === 'host1'
-                        ? 'Alex'
-                        : 'Jordan'}
-                    </div>
-                    <p>{message.content}</p>
-                  </div>
-                </div>
-              ))}
-              {isLoading && (
-                <div className="flex justify-start mb-4">
-                  <div className="bg-gray-700 rounded-lg px-4 py-2 text-white">
-                    <div className="flex space-x-2">
-                      <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"></div>
-                      <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                      <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input Area */}
-            <div className="p-4 border-t border-gray-700">
-              <form onSubmit={handleSubmit} className="flex items-center">
-                <button
-                  type="button"
-                  onClick={toggleHandRaised}
-                  className={`p-2 rounded-full mr-2 ${
-                    handRaised ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
-                  title={handRaised ? 'Hand raised' : 'Raise hand to speak'}
-                >
-                  <HandRaisedIcon className="h-6 w-6" />
-                </button>
-                
-                {browserSupportsSpeechRecognition && (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
+      <div className="container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-2xl font-bold text-gray-800">{topic.title}</h1>
+            {isVoiceAvailable && (
+              <div className="flex items-center gap-2">
+                {voiceState.isPlaying && (
                   <button
-                    type="button"
-                    onClick={toggleSpeechRecognition}
-                    className={`p-2 rounded-full mr-2 ${
-                      listening ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                    title={listening ? 'Stop recording' : 'Start recording'}
+                    onClick={stopAudio}
+                    className="flex items-center gap-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
                   >
-                    {listening ? (
-                      <XMarkIcon className="h-6 w-6" />
-                    ) : (
-                      <MicrophoneIcon className="h-6 w-6" />
-                    )}
+                    <StopIcon className="w-4 h-4" />
+                    Stop
                   </button>
                 )}
-                
-                <input
-                  type="text"
-                  value={userInput}
-                  onChange={(e) => setUserInput(e.target.value)}
-                  placeholder={handRaised ? "Type your message..." : "Raise your hand to join the discussion..."}
-                  disabled={!handRaised || isLoading}
-                  className="flex-1 bg-gray-700 text-white rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                
-                <button
-                  type="submit"
-                  disabled={!handRaised || !userInput.trim() || isLoading}
-                  className={`p-2 rounded-full ml-2 ${
-                    handRaised && userInput.trim() && !isLoading
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  <PaperAirplaneIcon className="h-6 w-6" />
-                </button>
-              </form>
-            </div>
-          </div>
-        ) : (
-          // Discussion Summary
-          <div className="bg-gray-800 rounded-b-lg shadow-xl p-6">
-            <h2 className="text-2xl font-bold text-white mb-4">Discussion Summary</h2>
-            
-            {isLoading ? (
-              <div className="animate-pulse">
-                <div className="h-4 bg-gray-700 rounded w-3/4 mb-4"></div>
-                <div className="h-4 bg-gray-700 rounded w-1/2 mb-4"></div>
-                <div className="h-4 bg-gray-700 rounded w-5/6 mb-4"></div>
-                <div className="h-4 bg-gray-700 rounded w-2/3 mb-4"></div>
-              </div>
-            ) : (
-              <>
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold text-white mb-2">Overview</h3>
-                  <p className="text-gray-300">{summary.summary}</p>
-                </div>
-                
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold text-white mb-2">Key Points</h3>
-                  <ul className="list-disc pl-5 text-gray-300">
-                    {summary.keyPoints.map((point, index) => (
-                      <li key={index} className="mb-1">{point}</li>
-                    ))}
-                  </ul>
-                </div>
-                
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold text-white mb-2">Transcript</h3>
-                  <div className="bg-gray-700 p-4 rounded-md max-h-60 overflow-y-auto">
-                    <pre className="text-gray-300 whitespace-pre-wrap font-mono text-sm">
-                      {summary.transcript}
-                    </pre>
+                {voiceState.currentSpeaker && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-blue-100 text-blue-800 rounded-lg">
+                    <SpeakerWaveIcon className="w-4 h-4" />
+                    {voiceState.currentSpeaker === 'alex' ? 'Alex' : 'Jordan'} speaking...
                   </div>
-                </div>
-                
-                <div className="flex justify-between mt-6">
-                  <button
-                    onClick={startNewDiscussion}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-                  >
-                    Start New Discussion
-                  </button>
-                  
-                  <button
-                    onClick={() => {
-                      // In a real app, this would save or email the transcript
-                      alert('Summary saved! In a real app, this would save or email the transcript.');
-                    }}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md"
-                  >
-                    Save Summary
-                  </button>
-                </div>
-              </>
+                )}
+              </div>
             )}
           </div>
-        )}
+          <p className="text-gray-600">{topic.description}</p>
+        </div>
+
+        {/* Chat Messages */}
+        <div className="bg-white rounded-xl shadow-lg mb-6 h-96 overflow-y-auto">
+          <div className="p-6 space-y-4">
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex items-start gap-3 ${
+                  message.sender === 'user' ? 'flex-row-reverse' : ''
+                }`}
+              >
+                <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                  message.sender === 'alex' ? 'bg-blue-500' :
+                  message.sender === 'jordan' ? 'bg-green-500' :
+                  'bg-purple-500'
+                }`}>
+                  {message.sender === 'user' ? (
+                    <UserIcon className="w-4 h-4 text-white" />
+                  ) : (
+                    <SparklesIcon className="w-4 h-4 text-white" />
+                  )}
+                </div>
+                <div className={`flex-1 ${message.sender === 'user' ? 'text-right' : ''}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold text-sm text-gray-700">
+                      {message.sender === 'alex' ? 'Alex' :
+                       message.sender === 'jordan' ? 'Jordan' :
+                       'You'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {formatTime(message.timestamp)}
+                    </span>
+                  </div>
+                  <div className={`inline-block p-3 rounded-lg max-w-md ${
+                    message.sender === 'user' 
+                      ? 'bg-purple-500 text-white' 
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {message.content}
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            {isLoading && (
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-gray-300 animate-pulse"></div>
+                <div className="bg-gray-100 p-3 rounded-lg">
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Input Area */}
+        <div className="bg-white rounded-xl shadow-lg p-4">
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Join the discussion..."
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              disabled={isLoading}
+            />
+            <button
+              onClick={handleSendMessage}
+              disabled={!inputMessage.trim() || isLoading}
+              className="px-6 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            >
+              <PaperAirplaneIcon className="w-4 h-4" />
+              Send
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
