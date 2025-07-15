@@ -201,14 +201,3 @@ export const generateDiscussionSummary = async (messages: ChatMessage[], topic: 
     throw error;
   }
 };
-
-// Export as a service object
-export const geminiService = {
-  suggestDiscussionTopics,
-  getHost1Response,
-  getHost2Response,
-  generateDiscussionSummary
-};
-
-// Also export as default
-export default geminiService;

@@ -1,5 +1,10 @@
-const ELEVENLABS_API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY;
-const ELEVENLABS_BASE_URL = 'https://api.elevenlabs.io/v1';
+// ElevenLabs Voice AI Service
+export interface VoiceSettings {
+  stability: number;
+  similarity_boost: number;
+  style?: number;
+  use_speaker_boost?: boolean;
+}
 
 export interface Voice {
   voice_id: string;
@@ -8,118 +13,179 @@ export interface Voice {
   description?: string;
 }
 
-export interface User {
-  subscription: {
-    tier: string;
-  };
-  xi_api_key: string;
-}
+// Predefined voices for the hosts
+export const HOST_VOICES = {
+  alex: {
+    voice_id: "21m00Tcm4TlvDq8ikWAM", // Rachel - warm, professional female voice
+    name: "Alex",
+    settings: {
+      stability: 0.75,
+      similarity_boost: 0.75,
+      style: 0.5,
+      use_speaker_boost: true
+    }
+  },
+  jordan: {
+    voice_id: "29vD33N1CtxCmqQRPOHJ", // Drew - confident, articulate male voice  
+    name: "Jordan",
+    settings: {
+      stability: 0.8,
+      similarity_boost: 0.8,
+      style: 0.4,
+      use_speaker_boost: true
+    }
+  }
+};
 
 class ElevenLabsService {
-  private apiKey: string;
-  
-  // Predefined voice IDs for Alex and Jordan
-  private readonly ALEX_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Adam voice
-  private readonly JORDAN_VOICE_ID = 'EXAVITQu4vr4xnSDxMaL'; // Bella voice
+  private apiKey: string | null;
+  private baseUrl = 'https://api.elevenlabs.io/v1';
 
   constructor() {
-    this.apiKey = ELEVENLABS_API_KEY || '';
+    this.apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY || null;
+    
     if (!this.apiKey) {
       console.warn('ElevenLabs API key not found. Voice features will be disabled.');
     }
   }
 
-  private async makeRequest(endpoint: string, options: RequestInit = {}) {
+  // Check if service is available
+  isAvailable(): boolean {
+    return !!this.apiKey;
+  }
+
+  // Get available voices
+  async getVoices(): Promise<Voice[]> {
     if (!this.apiKey) {
       throw new Error('ElevenLabs API key not configured');
     }
 
-    const url = `${ELEVENLABS_BASE_URL}${endpoint}`;
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'xi-api-key': this.apiKey,
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`ElevenLabs API Error (${response.status}):`, errorText);
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-    }
-
-    return response;
-  }
-
-  async getUserInfo(): Promise<User> {
     try {
-      const response = await this.makeRequest('/user');
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to fetch user info:', error);
-      throw new Error('Failed to fetch user info');
-    }
-  }
+      const response = await fetch(`${this.baseUrl}/voices`, {
+        headers: {
+          'xi-api-key': this.apiKey,
+        },
+      });
 
-  async getVoices(): Promise<Voice[]> {
-    try {
-      const response = await this.makeRequest('/voices');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch voices: ${response.statusText}`);
+      }
+
       const data = await response.json();
       return data.voices || [];
     } catch (error) {
-      console.error('Failed to fetch voices:', error);
-      throw new Error('Failed to fetch voices');
+      console.error('Error fetching voices:', error);
+      throw error;
     }
   }
 
-  async generateSpeech(text: string, voiceId: string): Promise<ArrayBuffer> {
+  // Generate speech from text
+  async generateSpeech(
+    text: string, 
+    voiceId: string, 
+    settings?: VoiceSettings
+  ): Promise<ArrayBuffer> {
+    if (!this.apiKey) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    const defaultSettings: VoiceSettings = {
+      stability: 0.75,
+      similarity_boost: 0.75,
+      style: 0.5,
+      use_speaker_boost: true
+    };
+
+    const voiceSettings = { ...defaultSettings, ...settings };
+
     try {
-      const response = await this.makeRequest(`/text-to-speech/${voiceId}`, {
+      const response = await fetch(`${this.baseUrl}/text-to-speech/${voiceId}`, {
         method: 'POST',
+        headers: {
+          'Accept': 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': this.apiKey,
+        },
         body: JSON.stringify({
           text,
           model_id: 'eleven_monolingual_v1',
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.5,
-          },
+          voice_settings: voiceSettings,
         }),
       });
 
+      if (!response.ok) {
+        throw new Error(`Failed to generate speech: ${response.statusText}`);
+      }
+
       return await response.arrayBuffer();
     } catch (error) {
-      console.error('Failed to generate speech:', error);
-      throw new Error('Failed to generate speech');
+      console.error('Error generating speech:', error);
+      throw error;
     }
   }
 
-  // Generate speech for Alex character
+  // Generate speech for Alex (Host 1)
   async generateAlexSpeech(text: string): Promise<ArrayBuffer> {
-    return this.generateSpeech(text, this.ALEX_VOICE_ID);
+    const alex = HOST_VOICES.alex;
+    return this.generateSpeech(text, alex.voice_id, alex.settings);
   }
 
-  // Generate speech for Jordan character
+  // Generate speech for Jordan (Host 2)
   async generateJordanSpeech(text: string): Promise<ArrayBuffer> {
-    return this.generateSpeech(text, this.JORDAN_VOICE_ID);
+    const jordan = HOST_VOICES.jordan;
+    return this.generateSpeech(text, jordan.voice_id, jordan.settings);
   }
 
-  // Create audio URL from buffer
+  // Create audio URL from ArrayBuffer
   createAudioUrl(audioBuffer: ArrayBuffer): string {
-    const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
-    return URL.createObjectURL(audioBlob);
+    const blob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+    return URL.createObjectURL(blob);
   }
 
-  // Check if service is configured
-  isConfigured(): boolean {
-    return !!this.apiKey;
+  // Play audio directly
+  async playAudio(audioBuffer: ArrayBuffer): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const audioUrl = this.createAudioUrl(audioBuffer);
+      const audio = new Audio(audioUrl);
+      
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        resolve();
+      };
+      
+      audio.onerror = (error) => {
+        URL.revokeObjectURL(audioUrl);
+        reject(error);
+      };
+      
+      audio.play().catch(reject);
+    });
   }
 
-  // Check if service is available (alias for isConfigured)
-  isAvailable(): boolean {
-    return this.isConfigured();
+  // Get user's usage info
+  async getUserInfo() {
+    if (!this.apiKey) {
+      throw new Error('ElevenLabs API key not configured');
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/user`, {
+        headers: {
+          'xi-api-key': this.apiKey,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch user info: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+      throw error;
+    }
   }
 }
 
+// Export singleton instance
 export const elevenLabsService = new ElevenLabsService();
