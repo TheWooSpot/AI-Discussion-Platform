@@ -8,6 +8,7 @@ import {
   XMarkIcon,
   SpeakerWaveIcon
 } from '@heroicons/react/24/outline';
+import VoiceProviderToggle from './VoiceProviderToggle';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -56,6 +57,9 @@ export default function Navbar() {
                 </Link>
               );
             })}
+            
+            {/* Voice Provider Toggle */}
+            <VoiceProviderToggle />
           </div>
 
           {/* Mobile menu button */}
@@ -96,6 +100,11 @@ export default function Navbar() {
                 </Link>
               );
             })}
+            
+            {/* Mobile Voice Provider Toggle */}
+            <div className="px-3 py-2">
+              <VoiceProviderToggle />
+            </div>
           </div>
         </div>
       )}

@@ -90,6 +90,26 @@ const mockDiscussions: Discussion[] = [
   }
 ];
 
+// Category colors mapping
+const categoryColors = {
+  'All': 'bg-gray-800 text-gray-300 hover:bg-gray-700',
+  'Technology': 'bg-blue-600 text-white hover:bg-blue-700',
+  'Environment': 'bg-green-600 text-white hover:bg-green-700',
+  'Science': 'bg-purple-600 text-white hover:bg-purple-700',
+  'Business': 'bg-orange-600 text-white hover:bg-orange-700',
+  'Health': 'bg-pink-600 text-white hover:bg-pink-700',
+  'Finance': 'bg-yellow-600 text-white hover:bg-yellow-700'
+};
+
+const categoryTextColors = {
+  'Technology': 'text-blue-400',
+  'Environment': 'text-green-400',
+  'Science': 'text-purple-400',
+  'Business': 'text-orange-400',
+  'Health': 'text-pink-400',
+  'Finance': 'text-yellow-400'
+};
+
 const categories = ['All', 'Technology', 'Science', 'Environment', 'Business', 'Health', 'Finance'];
 
 export default function ExplorePage() {
@@ -155,7 +175,7 @@ export default function ExplorePage() {
                   onClick={() => setSelectedCategory(category)}
                   className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                     selectedCategory === category
-                      ? 'bg-blue-600 text-white'
+                      ? categoryColors[category as keyof typeof categoryColors]
                       : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                   }`}
                 >
@@ -191,7 +211,7 @@ export default function ExplorePage() {
                     {discussion.isHot && (
                       <FireIcon className="h-4 w-4 text-orange-500 mr-2" />
                     )}
-                    <span className="text-sm text-blue-400 font-medium">
+                    <span className={`text-sm font-medium ${categoryTextColors[discussion.category as keyof typeof categoryTextColors]}`}>
                       {discussion.category}
                     </span>
                   </div>
