@@ -1,8 +1,8 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 
 class GeminiService {
   private genAI: GoogleGenerativeAI;
-  private model: any;
+  private model: GenerativeModel;
 
   constructor() {
     // Get API key from environment variables

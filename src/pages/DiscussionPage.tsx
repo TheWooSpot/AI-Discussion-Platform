@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { PlayIcon, PauseIcon, MicrophoneIcon } from '@heroicons/react/24/solid';
+import { PlayIcon, PauseIcon, MicrophoneIcon, PaperAirplaneIcon } from '@heroicons/react/24/solid';
 import { geminiService } from '../services/gemini';
 import { useVoiceProvider } from '../hooks/useVoiceProvider';
 
@@ -48,19 +48,35 @@ const discussions: Discussion[] = [
   }
 ];
 
+interface AudioItem {
+  type: 'elevenlabs' | 'webspeech';
+  audio?: HTMLAudioElement;
+  utterance?: SpeechSynthesisUtterance;
+  speaker: 'alex' | 'jordan';
+  text: string;
+}
+
+interface ChatMessage {
+  id: string;
+  speaker: 'alex' | 'jordan';
+  text: string;
+  timestamp: Date;
+}
+
 const DiscussionPage: React.FC = () => {
   const { topicId } = useParams<{ topicId: string }>();
   const { currentProvider, providerType } = useVoiceProvider();
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(12 * 60);
   const [isTimerActive, setIsTimerActive] = useState<boolean>(false);
   const [debugInfo, setDebugInfo] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [currentSpeaker, setCurrentSpeaker] = useState<'alex' | 'jordan' | null>(null);
-  const [audioQueue, setAudioQueue] = useState<HTMLAudioElement[]>([]);
+  const [audioQueue, setAudioQueue] = useState<AudioItem[]>([]);
   const [currentAudioIndex, setCurrentAudioIndex] = useState<number>(0);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [userInput, setUserInput] = useState<string>('');
 
   const discussion = discussions.find(d => d.id === topicId) || discussions[0];
 
@@ -113,95 +129,147 @@ const DiscussionPage: React.FC = () => {
     return colors[category] || 'text-gray-400';
   };
 
-  const createAudioElement = (blob: Blob): HTMLAudioElement => {
-    if (providerType === 'webspeech') {
-      // Handle Web Speech API blobs
-      const audio = new Audio();
-      
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const data = JSON.parse(reader.result as string);
-          if (data.type === 'web-speech') {
-            const utterance = new SpeechSynthesisUtterance(data.text);
-            
-            // Find the appropriate voice
-            const voices = speechSynthesis.getVoices();
-            const voice = voices.find(v => v.name === data.voice) || voices[0];
-            if (voice) utterance.voice = voice;
-            
-            utterance.rate = data.rate;
-            utterance.pitch = data.pitch;
-            utterance.volume = data.volume;
-            
-            // Override play method to use speech synthesis
-            audio.play = async () => {
-              console.log(`🔊 Playing Web Speech: ${data.text.substring(0, 50)}...`);
-              speechSynthesis.speak(utterance);
-              return Promise.resolve();
-            };
-            
-            audio.pause = () => {
-              speechSynthesis.cancel();
-            };
-            
-            // Simulate audio events
-            utterance.onstart = () => {
-              audio.dispatchEvent(new Event('play'));
-            };
-            
-            utterance.onend = () => {
-              audio.dispatchEvent(new Event('ended'));
-            };
-            
-            utterance.onerror = () => {
-              audio.dispatchEvent(new Event('error'));
-            };
-          }
-        } catch (error) {
-          console.error('Error parsing Web Speech blob:', error);
-        }
-      };
-      
-      reader.readAsText(blob);
-      return audio;
+  const createWebSpeechUtterance = (text: string, speaker: 'alex' | 'jordan'): SpeechSynthesisUtterance => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Get available voices
+    const voices = speechSynthesis.getVoices();
+    
+    // Select voice based on speaker
+    let selectedVoice: SpeechSynthesisVoice | null = null;
+    
+    if (speaker === 'alex') {
+      selectedVoice = 
+        voices.find(voice => voice.name.includes('Microsoft David')) ||
+        voices.find(voice => voice.name.includes('David')) ||
+        voices.find(voice => voice.name.toLowerCase().includes('male')) ||
+        voices.find(voice => voice.name.includes('Alex')) ||
+        voices.find(voice => voice.gender === 'male') ||
+        voices[0];
     } else {
-      // Handle ElevenLabs blobs normally
-      console.log('🔊 Creating ElevenLabs audio element');
-      const audioUrl = URL.createObjectURL(blob);
-      return new Audio(audioUrl);
+      selectedVoice = 
+        voices.find(voice => voice.name.includes('Microsoft Zira')) ||
+        voices.find(voice => voice.name.includes('Zira')) ||
+        voices.find(voice => voice.name.toLowerCase().includes('female')) ||
+        voices.find(voice => voice.name.includes('Samantha')) ||
+        voices.find(voice => voice.gender === 'female') ||
+        voices[1] || voices[0];
     }
+    
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+      console.log(`🎤 Selected voice: ${selectedVoice.name} for ${speaker}`);
+    }
+    
+    // Configure speech parameters
+    utterance.rate = speaker === 'alex' ? 0.9 : 1.0;
+    utterance.pitch = speaker === 'alex' ? 0.8 : 1.2;
+    utterance.volume = 1.0;
+    
+    return utterance;
+  };
+
+  const createAudioItem = async (blob: Blob, speaker: 'alex' | 'jordan', text: string): Promise<AudioItem> => {
+    if (providerType === 'webspeech') {
+      // For Web Speech, create utterance directly
+      console.log(`🔊 Creating Web Speech utterance for ${speaker}`);
+      const utterance = createWebSpeechUtterance(text, speaker);
+      
+      return {
+        type: 'webspeech',
+        utterance,
+        speaker,
+        text
+      };
+    } else {
+      // For ElevenLabs, create audio element
+      console.log(`🔊 Creating ElevenLabs audio element for ${speaker}`);
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      
+      return {
+        type: 'elevenlabs',
+        audio,
+        speaker,
+        text
+      };
+    }
+  };
+
+  const addChatMessage = (speaker: 'alex' | 'jordan', text: string): void => {
+    const message: ChatMessage = {
+      id: Date.now().toString(),
+      speaker,
+      text,
+      timestamp: new Date()
+    };
+    setChatMessages(prev => [...prev, message]);
   };
 
   const playNextAudio = async (): Promise<void> => {
     if (currentAudioIndex >= audioQueue.length) {
       setIsPlaying(false);
-      setCurrentAudio(null);
       setIsTimerActive(false);
       setCurrentSpeaker(null);
       setDebugInfo('Discussion completed');
       return;
     }
 
-    const audio = audioQueue[currentAudioIndex];
-    const speaker = currentAudioIndex % 2 === 0 ? 'alex' : 'jordan';
+    const audioItem = audioQueue[currentAudioIndex];
+    const speaker = audioItem.speaker;
     
     setCurrentSpeaker(speaker);
     setDebugInfo(`Playing ${speaker} - segment ${currentAudioIndex + 1}/${audioQueue.length} (${providerType})`);
     
-    audio.onended = () => {
-      setCurrentAudioIndex(prev => prev + 1);
-    };
-
-    audio.onerror = () => {
-      setError(`Audio playback failed for ${speaker}`);
-      setIsPlaying(false);
-      setIsTimerActive(false);
-    };
-
+    // Add message to chat
+    addChatMessage(speaker, audioItem.text);
+    
     try {
-      await audio.play();
-      setCurrentAudio(audio);
+      if (audioItem.type === 'webspeech' && audioItem.utterance) {
+        // Handle Web Speech API
+        console.log(`🔊 Playing Web Speech for ${speaker}: ${audioItem.text.substring(0, 50)}...`);
+        
+        const utterance = audioItem.utterance;
+        
+        utterance.onstart = () => {
+          console.log(`🔊 Web Speech started for ${speaker}`);
+        };
+        
+        utterance.onend = () => {
+          console.log(`✅ Web Speech completed for ${speaker}`);
+          setCurrentAudioIndex(prev => prev + 1);
+        };
+        
+        utterance.onerror = (event) => {
+          console.error(`❌ Web Speech error for ${speaker}:`, event.error);
+          setError(`Web Speech error: ${event.error}`);
+          setIsPlaying(false);
+          setIsTimerActive(false);
+        };
+        
+        // Cancel any existing speech and start new one
+        speechSynthesis.cancel();
+        speechSynthesis.speak(utterance);
+        
+      } else if (audioItem.type === 'elevenlabs' && audioItem.audio) {
+        // Handle ElevenLabs audio
+        console.log(`🔊 Playing ElevenLabs audio for ${speaker}`);
+        
+        const audio = audioItem.audio;
+        
+        audio.onended = () => {
+          setCurrentAudioIndex(prev => prev + 1);
+        };
+
+        audio.onerror = () => {
+          setError(`Audio playback failed for ${speaker}`);
+          setIsPlaying(false);
+          setIsTimerActive(false);
+        };
+
+        await audio.play();
+      }
+      
     } catch (error) {
       console.error('Error playing audio:', error);
       setError('Audio playback failed');
@@ -216,6 +284,65 @@ const DiscussionPage: React.FC = () => {
     }
   }, [currentAudioIndex, audioQueue, isPlaying]);
 
+  const parseDiscussion = (text: string): Array<{speaker: 'alex' | 'jordan', text: string}> => {
+    const segments: Array<{speaker: 'alex' | 'jordan', text: string}> = [];
+    
+    // Split by common speaker indicators
+    const lines = text.split('\n').filter(line => line.trim());
+    let currentSpeaker: 'alex' | 'jordan' = 'alex';
+    let currentText = '';
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      // Check for speaker indicators
+      if (trimmedLine.toLowerCase().includes('alex:') || 
+          trimmedLine.toLowerCase().includes('alex ') ||
+          trimmedLine.toLowerCase().startsWith('alex')) {
+        
+        // Save previous segment if exists
+        if (currentText.trim()) {
+          segments.push({ speaker: currentSpeaker, text: currentText.trim() });
+        }
+        
+        currentSpeaker = 'alex';
+        currentText = trimmedLine.replace(/^alex:?\s*/i, '');
+        
+      } else if (trimmedLine.toLowerCase().includes('jordan:') || 
+                 trimmedLine.toLowerCase().includes('jordan ') ||
+                 trimmedLine.toLowerCase().startsWith('jordan')) {
+        
+        // Save previous segment if exists
+        if (currentText.trim()) {
+          segments.push({ speaker: currentSpeaker, text: currentText.trim() });
+        }
+        
+        currentSpeaker = 'jordan';
+        currentText = trimmedLine.replace(/^jordan:?\s*/i, '');
+        
+      } else {
+        // Continue with current speaker
+        currentText += ' ' + trimmedLine;
+      }
+    }
+
+    // Add final segment
+    if (currentText.trim()) {
+      segments.push({ speaker: currentSpeaker, text: currentText.trim() });
+    }
+
+    // If no clear separation found, alternate speakers by paragraph
+    if (segments.length <= 1) {
+      const paragraphs = text.split('\n\n').filter(p => p.trim());
+      return paragraphs.map((paragraph, index) => ({
+        speaker: index % 2 === 0 ? 'alex' : 'jordan',
+        text: paragraph.trim()
+      }));
+    }
+
+    return segments;
+  };
+
   const handlePlayPause = async (): Promise<void> => {
     console.log(`🎯 DISCUSSION START - Provider: ${providerType}, Name: ${currentProvider.getProviderName()}`);
     setDebugInfo(`Starting with ${currentProvider.getProviderName()}...`);
@@ -223,13 +350,14 @@ const DiscussionPage: React.FC = () => {
 
     if (isPlaying) {
       console.log('⏸️ Pausing discussion');
-      if (currentAudio) {
-        currentAudio.pause();
-        setCurrentAudio(null);
-      }
-      if (providerType === 'webspeech') {
+      
+      // Stop current audio based on type
+      if (audioQueue[currentAudioIndex]?.type === 'webspeech') {
         speechSynthesis.cancel();
+      } else if (audioQueue[currentAudioIndex]?.audio) {
+        audioQueue[currentAudioIndex].audio!.pause();
       }
+      
       setIsPlaying(false);
       setIsTimerActive(false);
       setCurrentSpeaker(null);
@@ -241,6 +369,7 @@ const DiscussionPage: React.FC = () => {
     setIsTimerActive(true);
     setCurrentAudioIndex(0);
     setAudioQueue([]);
+    setChatMessages([]);
     
     try {
       console.log('🤖 Generating content with Gemini...');
@@ -248,15 +377,38 @@ const DiscussionPage: React.FC = () => {
       console.log('✅ Gemini response received');
       setDebugInfo(`Content generated, creating speech with ${currentProvider.getProviderName()}...`);
       
-      console.log(`🎤 Converting to speech with ${currentProvider.getProviderName()}...`);
-      const audioBlobs = await currentProvider.generateDiscussionAudio(response);
-      console.log(`✅ Generated ${audioBlobs.length} audio segments with ${providerType}`);
-      setDebugInfo(`Speech generated for ${audioBlobs.length} segments, preparing playback...`);
+      // Parse discussion into segments
+      const segments = parseDiscussion(response);
+      console.log(`📝 Parsed ${segments.length} discussion segments`);
       
-      console.log('🔊 Creating audio elements...');
-      const audioElements = audioBlobs.map(blob => createAudioElement(blob));
+      if (providerType === 'webspeech') {
+        // For Web Speech, create utterances directly
+        console.log('🎤 Creating Web Speech utterances...');
+        const audioItems: AudioItem[] = [];
+        
+        for (const segment of segments) {
+          const audioItem = await createAudioItem(new Blob(), segment.speaker, segment.text);
+          audioItems.push(audioItem);
+        }
+        
+        setAudioQueue(audioItems);
+        console.log(`✅ Created ${audioItems.length} Web Speech utterances`);
+        
+      } else {
+        // For ElevenLabs, generate audio blobs
+        console.log(`🎤 Converting to speech with ${currentProvider.getProviderName()}...`);
+        const audioBlobs = await currentProvider.generateDiscussionAudio(response);
+        console.log(`✅ Generated ${audioBlobs.length} audio segments with ${providerType}`);
+        
+        const audioItems: AudioItem[] = [];
+        for (let i = 0; i < audioBlobs.length && i < segments.length; i++) {
+          const audioItem = await createAudioItem(audioBlobs[i], segments[i].speaker, segments[i].text);
+          audioItems.push(audioItem);
+        }
+        
+        setAudioQueue(audioItems);
+      }
       
-      setAudioQueue(audioElements);
       setIsPlaying(true);
       setDebugInfo(`Starting discussion with ${currentProvider.getProviderName()}...`);
       
@@ -268,6 +420,15 @@ const DiscussionPage: React.FC = () => {
       setIsTimerActive(false);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleUserInputSubmit = (e: React.FormEvent): void => {
+    e.preventDefault();
+    if (userInput.trim()) {
+      // TODO: Handle user input (text or voice) - to be implemented later
+      console.log('User input:', userInput);
+      setUserInput('');
     }
   };
 
@@ -387,53 +548,100 @@ const DiscussionPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Discussion Theater */}
+            {/* Chat Bubbles Area */}
             <div className="bg-gray-800 rounded-lg p-8">
-              <div className="text-center">
-                <div className="w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-6 flex items-center justify-center">
-                  <div className={`w-16 h-16 rounded-full ${isPlaying ? 'animate-pulse bg-white' : 'bg-gray-300'}`}></div>
-                </div>
-                
-                <h2 className="text-2xl font-bold mb-4">AI Discussion Theater</h2>
-                
-                {isPlaying ? (
-                  <div className="space-y-4">
-                    <p className="text-lg text-blue-400">🎙️ Discussion in progress with {currentProvider.getProviderName()}</p>
-                    <div className="flex justify-center space-x-8">
-                      <div className="text-center">
-                        <div className={`w-12 h-12 rounded-full mb-2 ${
-                          currentSpeaker === 'alex' 
-                            ? 'bg-blue-500 animate-pulse' 
-                            : 'bg-gray-600'
-                        }`}></div>
-                        <p className={`text-sm ${
-                          currentSpeaker === 'alex' ? 'text-blue-400 font-semibold' : 'text-gray-400'
-                        }`}>Alex</p>
-                      </div>
-                      <div className="text-center">
-                        <div className={`w-12 h-12 rounded-full mb-2 ${
-                          currentSpeaker === 'jordan' 
-                            ? 'bg-purple-500 animate-pulse' 
-                            : 'bg-gray-600'
-                        }`}></div>
-                        <p className={`text-sm ${
-                          currentSpeaker === 'jordan' ? 'text-purple-400 font-semibold' : 'text-gray-400'
-                        }`}>Jordan</p>
-                      </div>
+              <div className="h-96 overflow-y-auto mb-4 space-y-4">
+                {chatMessages.length === 0 ? (
+                  <div className="text-center text-gray-400 mt-32">
+                    <div className="w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-6 flex items-center justify-center">
+                      <div className={`w-16 h-16 rounded-full ${isPlaying ? 'animate-pulse bg-white' : 'bg-gray-300'}`}></div>
                     </div>
-                    {currentSpeaker && (
-                      <p className="text-sm text-gray-300">
-                        {currentSpeaker === 'alex' ? 'Alex' : 'Jordan'} is speaking...
-                      </p>
+                    <h2 className="text-2xl font-bold mb-4">AI Discussion Chamber</h2>
+                    {isPlaying ? (
+                      <div className="space-y-4">
+                        <p className="text-lg text-blue-400">🎙️ Discussion in progress with {currentProvider.getProviderName()}</p>
+                        <div className="flex justify-center space-x-8">
+                          <div className="text-center">
+                            <div className={`w-12 h-12 rounded-full mb-2 ${
+                              currentSpeaker === 'alex' 
+                                ? 'bg-blue-500 animate-pulse' 
+                                : 'bg-gray-600'
+                            }`}></div>
+                            <p className={`text-sm ${
+                              currentSpeaker === 'alex' ? 'text-blue-400 font-semibold' : 'text-gray-400'
+                            }`}>Alex</p>
+                          </div>
+                          <div className="text-center">
+                            <div className={`w-12 h-12 rounded-full mb-2 ${
+                              currentSpeaker === 'jordan' 
+                                ? 'bg-purple-500 animate-pulse' 
+                                : 'bg-gray-600'
+                            }`}></div>
+                            <p className={`text-sm ${
+                              currentSpeaker === 'jordan' ? 'text-purple-400 font-semibold' : 'text-gray-400'
+                            }`}>Jordan</p>
+                          </div>
+                        </div>
+                        {currentSpeaker && (
+                          <p className="text-sm text-gray-300">
+                            {currentSpeaker === 'alex' ? 'Alex' : 'Jordan'} is speaking...
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-gray-400">Click "Start Discussion" to begin the AI-powered conversation</p>
+                        <p className="text-sm text-blue-400">Using: {currentProvider.getProviderName()}</p>
+                      </div>
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <p className="text-gray-400">Click "Start Discussion" to begin the AI-powered conversation</p>
-                    <p className="text-sm text-blue-400">Using: {currentProvider.getProviderName()}</p>
-                  </div>
+                  chatMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`flex ${message.speaker === 'alex' ? 'justify-start' : 'justify-end'}`}
+                    >
+                      <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                        message.speaker === 'alex'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-purple-600 text-white'
+                      }`}>
+                        <div className="flex items-center space-x-2 mb-1">
+                          <div className={`w-3 h-3 rounded-full ${
+                            message.speaker === 'alex' ? 'bg-blue-300' : 'bg-purple-300'
+                          }`}></div>
+                          <span className="text-xs font-semibold">
+                            {message.speaker === 'alex' ? 'Alex' : 'Jordan'}
+                          </span>
+                        </div>
+                        <p className="text-sm">{message.text}</p>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
+
+              {/* User Input Text Box */}
+              <form onSubmit={handleUserInputSubmit} className="flex space-x-2">
+                <input
+                  type="text"
+                  value={userInput}
+                  onChange={(e) => setUserInput(e.target.value)}
+                  placeholder="Type your message or question..."
+                  className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <button
+                  type="submit"
+                  disabled={!userInput.trim()}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    userInput.trim()
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <PaperAirplaneIcon className="h-5 w-5" />
+                </button>
+              </form>
             </div>
           </div>
         </div>

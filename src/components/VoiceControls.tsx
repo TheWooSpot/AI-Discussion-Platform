@@ -1,19 +1,30 @@
+import React from 'react';
 import { SpeakerWaveIcon, SpeakerXMarkIcon, MicrophoneIcon } from '@heroicons/react/24/solid';
-import { useVoiceAI } from '../hooks/useVoiceAI';
+
+interface VoiceState {
+  isLoading: boolean;
+  isPlaying: boolean;
+  currentSpeaker: 'alex' | 'jordan' | null;
+  error: string | null;
+}
 
 interface VoiceControlsProps {
   onToggleVoice?: () => void;
   voiceEnabled?: boolean;
   className?: string;
+  voiceState?: VoiceState;
+  stopAudio?: () => void;
+  isAvailable?: boolean;
 }
 
-export default function VoiceControls({ 
+const VoiceControls: React.FC<VoiceControlsProps> = ({ 
   onToggleVoice, 
   voiceEnabled = true, 
-  className = '' 
-}: VoiceControlsProps) {
-  const { voiceState, stopAudio, isAvailable } = useVoiceAI();
-
+  className = '',
+  voiceState = { isLoading: false, isPlaying: false, currentSpeaker: null, error: null },
+  stopAudio,
+  isAvailable = true
+}) => {
   if (!isAvailable) {
     return (
       <div className={`flex items-center space-x-2 ${className}`}>
@@ -42,7 +53,7 @@ export default function VoiceControls({
       </button>
 
       {/* Stop Audio */}
-      {voiceState.isPlaying && (
+      {voiceState.isPlaying && stopAudio && (
         <button
           onClick={stopAudio}
           className="p-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors"
@@ -78,4 +89,6 @@ export default function VoiceControls({
       </div>
     </div>
   );
-}
+};
+
+export default VoiceControls;
