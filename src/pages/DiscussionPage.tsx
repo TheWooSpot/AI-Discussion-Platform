@@ -61,6 +61,7 @@ interface ChatMessage {
   speaker: 'alex' | 'jordan' | 'user';
   text: string;
   timestamp: Date;
+  userName?: string;
 }
 
 const DiscussionPage: React.FC = () => {
@@ -77,6 +78,9 @@ const DiscussionPage: React.FC = () => {
   const [currentAudioIndex, setCurrentAudioIndex] = useState<number>(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState<string>('');
+  const [userName, setUserName] = useState<string>('');
+  const [showNamePrompt, setShowNamePrompt] = useState<boolean>(true);
+  const [tempUserName, setTempUserName] = useState<string>('');
 
   const discussion = discussions.find(d => d.id === topicId) || discussions[0];
 
@@ -437,9 +441,10 @@ const DiscussionPage: React.FC = () => {
     // Add user message to chat
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
-      speaker: 'user' as any, // We'll extend the type
+      speaker: 'user',
       text: message,
       timestamp: new Date()
+      userName: userName
     };
     setChatMessages(prev => [...prev, userMessage]);
     
@@ -508,6 +513,14 @@ const DiscussionPage: React.FC = () => {
       setError('Failed to generate moderator response');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleNameSubmit = (e: React.FormEvent): void => {
+    e.preventDefault();
+    if (tempUserName.trim()) {
+      setUserName(tempUserName.trim());
+      setShowNamePrompt(false);
     }
   };
 
@@ -629,6 +642,39 @@ const DiscussionPage: React.FC = () => {
 
             {/* Chat Bubbles Area */}
             <div className="bg-gray-800 rounded-lg p-8">
+              {/* Name Prompt Modal */}
+              {showNamePrompt && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4">
+                    <h2 className="text-2xl font-bold mb-4 text-center">Welcome to the Discussion!</h2>
+                    <p className="text-gray-300 mb-6 text-center">
+                      Please enter your name to join the conversation with Alex and Jordan.
+                    </p>
+                    <form onSubmit={handleNameSubmit}>
+                      <input
+                        type="text"
+                        value={tempUserName}
+                        onChange={(e) => setTempUserName(e.target.value)}
+                        placeholder="Enter your name..."
+                        className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
+                        autoFocus
+                      />
+                      <button
+                        type="submit"
+                        disabled={!tempUserName.trim()}
+                        className={`w-full py-3 rounded-lg font-medium transition-colors ${
+                          tempUserName.trim()
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                            : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                        }`}
+                      >
+                        Join Discussion
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
               <div className="h-96 overflow-y-auto mb-4 space-y-4">
                 {chatMessages.length === 0 ? (
                   <div className="text-center text-gray-400 mt-32">
@@ -675,52 +721,97 @@ const DiscussionPage: React.FC = () => {
                     )}
                   </div>
                 ) : (
-                  chatMessages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`flex ${message.speaker === 'alex' ? 'justify-start' : 'justify-end'}`}
-                    >
-                      <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                        message.speaker === 'alex'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-purple-600 text-white'
-                      }`}>
-                        <div className="flex items-center space-x-2 mb-1">
-                          <div className={`w-3 h-3 rounded-full ${
-                            message.speaker === 'alex' ? 'bg-blue-300' : 'bg-purple-300'
-                          }`}></div>
-                          <span className="text-xs font-semibold">
-                            {message.speaker === 'alex' ? 'Alex' : 'Jordan'}
-                          </span>
+                  <div className="space-y-4">
+                    {chatMessages.map((message) => (
+                      <div key={message.id} className="grid grid-cols-3 gap-4 items-start">
+                        {/* Alex Column */}
+                        <div className="flex justify-start">
+                          {message.speaker === 'alex' && (
+                            <div className="max-w-full px-4 py-3 rounded-lg bg-blue-600 text-white">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <div className="w-3 h-3 rounded-full bg-blue-300"></div>
+                                <span className="text-xs font-semibold">Alex</span>
+                                <span className="text-xs text-blue-200">
+                                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-sm leading-relaxed">{message.text}</p>
+                            </div>
+                          )}
                         </div>
-                        <p className="text-sm">{message.text}</p>
+
+                        {/* User Column */}
+                        <div className="flex justify-center">
+                          {message.speaker === 'user' && (
+                            <div className="max-w-full px-4 py-3 rounded-lg bg-green-600 text-white">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <div className="w-3 h-3 rounded-full bg-green-300"></div>
+                                <span className="text-xs font-semibold">{message.userName || 'You'}</span>
+                                <span className="text-xs text-green-200">
+                                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-sm leading-relaxed">{message.text}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Jordan Column */}
+                        <div className="flex justify-end">
+                          {message.speaker === 'jordan' && (
+                            <div className="max-w-full px-4 py-3 rounded-lg bg-purple-600 text-white">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <div className="w-3 h-3 rounded-full bg-purple-300"></div>
+                                <span className="text-xs font-semibold">Jordan</span>
+                                <span className="text-xs text-purple-200">
+                                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-sm leading-relaxed">{message.text}</p>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
 
               {/* User Input Text Box */}
-              <form onSubmit={handleUserInputSubmit} className="flex space-x-2">
-                <input
-                  type="text"
-                  value={userInput}
-                  onChange={(e) => setUserInput(e.target.value)}
-                  placeholder="Type your message or question..."
-                  className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                <button
-                  type="submit"
-                  disabled={!userInput.trim()}
-                  className={`px-4 py-2 rounded-lg transition-colors ${
-                    userInput.trim()
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  <PaperAirplaneIcon className="h-5 w-5" />
-                </button>
-              </form>
+              {!showNamePrompt && (
+                <div className="border-t border-gray-700 pt-4">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+                      <span className="text-sm font-bold text-white">{userName.charAt(0).toUpperCase()}</span>
+                    </div>
+                    <span className="text-sm text-gray-300">Chatting as <strong>{userName}</strong></span>
+                  </div>
+                  <form onSubmit={handleUserInputSubmit} className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={userInput}
+                      onChange={(e) => setUserInput(e.target.value)}
+                      placeholder={`${userName}, share your thoughts on ${discussion.title.toLowerCase()}...`}
+                      className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!userInput.trim() || isGenerating}
+                      className={`px-4 py-3 rounded-lg transition-colors ${
+                        userInput.trim() && !isGenerating
+                          ? 'bg-green-600 hover:bg-green-700 text-white'
+                          : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      {isGenerating ? (
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      ) : (
+                        <PaperAirplaneIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                  </form>
+                </div>
+              )}
             </div>
           </div>
         </div>
