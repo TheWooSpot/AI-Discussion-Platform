@@ -847,10 +847,10 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
                 ) : (
                   <div className="space-y-4">
                     {chatMessages.map((message) => (
-                    <p className="text-gray-400">Listen to Alex and Jordan discuss the topic, then join the conversation!</p>
+                      <div key={message.id} className="space-y-4">
                         {/* Alex Column */}
-                        <div className="flex justify-start">
-                          {message.speaker === 'alex' && (
+                        {message.speaker === 'alex' && (
+                          <div className="flex justify-start">
                             <div className="max-w-full px-4 py-3 rounded-lg bg-blue-600 text-white shadow-lg min-h-[60px] flex flex-col justify-center">
                               <div className="flex items-center space-x-2 mb-2">
                                 <div className="w-3 h-3 rounded-full bg-blue-300"></div>
@@ -867,12 +867,12 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
                               </div>
                               <p className="text-sm leading-relaxed whitespace-pre-wrap min-h-[20px]">{message.text}</p>
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
 
                         {/* User Column */}
-                        <div className="flex justify-center">
-                          {message.speaker === 'user' && (
+                        {message.speaker === 'user' && (
+                          <div className="flex justify-center">
                             <div className="max-w-full px-4 py-3 rounded-lg bg-green-600 text-white shadow-lg min-h-[60px] flex flex-col justify-center">
                               <div className="flex items-center space-x-2 mb-2">
                                 <div className="w-3 h-3 rounded-full bg-green-300"></div>
@@ -883,12 +883,12 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
                               </div>
                               <p className="text-sm leading-relaxed whitespace-pre-wrap min-h-[20px]">{message.text}</p>
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
 
                         {/* Jordan Column */}
-                        <div className="flex justify-end">
-                          {message.speaker === 'jordan' && (
+                        {message.speaker === 'jordan' && (
+                          <div className="flex justify-end">
                             <div className="max-w-full px-4 py-3 rounded-lg bg-purple-600 text-white shadow-lg min-h-[60px] flex flex-col justify-center">
                               <div className="flex items-center space-x-2 mb-2">
                                 <div className="w-3 h-3 rounded-full bg-purple-300"></div>
@@ -905,8 +905,8 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
                               </div>
                               <p className="text-sm leading-relaxed whitespace-pre-wrap min-h-[20px]">{message.text}</p>
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
