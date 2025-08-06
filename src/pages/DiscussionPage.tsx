@@ -58,7 +58,7 @@ interface AudioItem {
 
 interface ChatMessage {
   id: string;
-  speaker: 'alex' | 'jordan';
+  speaker: 'alex' | 'jordan' | 'user';
   text: string;
   timestamp: Date;
 }
@@ -426,9 +426,88 @@ const DiscussionPage: React.FC = () => {
   const handleUserInputSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
     if (userInput.trim()) {
-      // TODO: Handle user input (text or voice) - to be implemented later
-      console.log('User input:', userInput);
+      handleUserMessage(userInput.trim());
       setUserInput('');
+    }
+  };
+
+  const handleUserMessage = async (message: string): Promise<void> => {
+    console.log('👤 User message received:', message);
+    
+    // Add user message to chat
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      speaker: 'user' as any, // We'll extend the type
+      text: message,
+      timestamp: new Date()
+    };
+    setChatMessages(prev => [...prev, userMessage]);
+    
+    // Generate AI moderator response
+    try {
+      setIsGenerating(true);
+      setDebugInfo('Generating moderator response to user...');
+      
+      const prompt = `You are ${Math.random() > 0.5 ? 'Alex' : 'Jordan'}, an AI discussion moderator. A user just joined the conversation about "${discussion.title}" and said: "${message}"
+      
+      Respond naturally as if you're acknowledging their comment and inviting them into the discussion. Keep it conversational, welcoming, and relevant to the topic. Your response should be 1-2 sentences that:
+      1. Acknowledge what they said
+      2. Ask a follow-up question or invite them to elaborate
+      3. Connect it back to the main discussion topic
+      
+      Be warm and engaging, as if you're a real podcast host welcoming a caller.`;
+      
+      const response = await geminiService.generateContent(prompt);
+      const moderator = Math.random() > 0.5 ? 'alex' : 'jordan';
+      
+      // Add moderator response to chat
+      const moderatorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        speaker: moderator,
+        text: response,
+        timestamp: new Date()
+      };
+      setChatMessages(prev => [...prev, moderatorMessage]);
+      
+      // Generate and play voice response if voice is enabled
+      if (currentProvider && !isPlaying) {
+        try {
+          setDebugInfo(`Generating voice response from ${moderator}...`);
+          
+          if (providerType === 'webspeech') {
+            await playWebSpeech(response, moderator);
+          } else {
+            const audioBlob = await currentProvider.generateSpeech(response, moderator);
+            const audio = createAudioElement(audioBlob, moderator);
+            
+            audio.onplay = () => {
+              setCurrentSpeaker(moderator);
+              setDebugInfo(`${moderator} responding to user with ${currentProvider.getProviderName()}`);
+            };
+            
+            audio.onended = () => {
+              setCurrentSpeaker(null);
+              setDebugInfo('Moderator response completed');
+            };
+            
+            audio.onerror = () => {
+              setError(`Failed to play ${moderator}'s response`);
+              setCurrentSpeaker(null);
+            };
+            
+            await audio.play();
+          }
+        } catch (voiceError) {
+          console.error('Voice generation failed:', voiceError);
+          setDebugInfo('Voice response failed, but text response added');
+        }
+      }
+      
+    } catch (error) {
+      console.error('Failed to generate moderator response:', error);
+      setError('Failed to generate moderator response');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
