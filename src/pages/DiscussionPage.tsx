@@ -243,12 +243,25 @@ const DiscussionPage: React.FC = () => {
     setTimeout(animateText, 200);
     
     // Auto-scroll to bottom to show new message
-    setTimeout(() => {
+    const scrollToBottom = () => {
       const chatContainer = document.querySelector('.chat-container');
       if (chatContainer) {
         chatContainer.scrollTop = chatContainer.scrollHeight;
       }
-    }, 250); // Slightly longer delay to account for animation start
+    };
+    
+    // Multiple scroll attempts to ensure visibility
+    setTimeout(scrollToBottom, 250);
+    setTimeout(scrollToBottom, 500);
+    setTimeout(scrollToBottom, 1000);
+    
+    // Continue scrolling during animation
+    const scrollInterval = setInterval(() => {
+      scrollToBottom();
+      if (currentIndex >= text.length) {
+        clearInterval(scrollInterval);
+      }
+    }, 100);
   };
 
   const playNextAudio = async (): Promise<void> => {
@@ -719,7 +732,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
             </div>
 
             {/* Chat Bubbles Area */}
-            <div className="bg-gray-800 rounded-lg p-8 pb-4">
+            <div className="bg-gray-800 rounded-lg p-8 pb-4 min-h-[600px]">
               {/* Name Prompt Modal */}
               {showNamePrompt && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -754,7 +767,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                 </div>
               )}
 
-              <div className="h-96 overflow-y-auto mb-6 space-y-4 chat-container pb-4">
+              <div className="h-96 overflow-y-auto mb-6 space-y-4 chat-container pb-4" style={{ scrollBehavior: 'smooth' }}>
                 {chatMessages.length === 0 ? (
                   <div className="text-center text-gray-400 mt-32">
                     <div className="w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-6 flex items-center justify-center">
@@ -803,11 +816,11 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                 ) : (
                   <div className="space-y-4">
                     {chatMessages.map((message) => (
-                      <div key={message.id} className="grid grid-cols-3 gap-4 items-start">
+                      <div key={message.id} className="grid grid-cols-3 gap-4 items-start opacity-100 transition-opacity duration-300">
                         {/* Alex Column */}
                         <div className="flex justify-start">
                           {message.speaker === 'alex' && (
-                            <div className="max-w-full px-4 py-3 rounded-lg bg-blue-600 text-white shadow-lg">
+                            <div className="max-w-full px-4 py-3 rounded-lg bg-blue-600 text-white shadow-lg min-h-[60px] flex flex-col justify-center">
                               <div className="flex items-center space-x-2 mb-2">
                                 <div className="w-3 h-3 rounded-full bg-blue-300"></div>
                                 <span className="text-xs font-semibold">Alex</span>
@@ -821,7 +834,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                                   <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
                                 )}
                               </div>
-                              <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.text}</p>
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap min-h-[20px]">{message.text}</p>
                             </div>
                           )}
                         </div>
@@ -829,7 +842,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                         {/* User Column */}
                         <div className="flex justify-center">
                           {message.speaker === 'user' && (
-                            <div className="max-w-full px-4 py-3 rounded-lg bg-green-600 text-white shadow-lg">
+                            <div className="max-w-full px-4 py-3 rounded-lg bg-green-600 text-white shadow-lg min-h-[60px] flex flex-col justify-center">
                               <div className="flex items-center space-x-2 mb-2">
                                 <div className="w-3 h-3 rounded-full bg-green-300"></div>
                                 <span className="text-xs font-semibold">{message.userName || 'You'}</span>
@@ -837,7 +850,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                                   {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                               </div>
-                              <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.text}</p>
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap min-h-[20px]">{message.text}</p>
                             </div>
                           )}
                         </div>
@@ -845,7 +858,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                         {/* Jordan Column */}
                         <div className="flex justify-end">
                           {message.speaker === 'jordan' && (
-                            <div className="max-w-full px-4 py-3 rounded-lg bg-purple-600 text-white shadow-lg">
+                            <div className="max-w-full px-4 py-3 rounded-lg bg-purple-600 text-white shadow-lg min-h-[60px] flex flex-col justify-center">
                               <div className="flex items-center space-x-2 mb-2">
                                 <div className="w-3 h-3 rounded-full bg-purple-300"></div>
                                 <span className="text-xs font-semibold">Jordan</span>
@@ -859,7 +872,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                                   <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
                                 )}
                               </div>
-                              <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.text}</p>
+                              <p className="text-sm leading-relaxed whitespace-pre-wrap min-h-[20px]">{message.text}</p>
                             </div>
                           )}
                         </div>
