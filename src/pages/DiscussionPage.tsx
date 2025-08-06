@@ -443,7 +443,7 @@ const DiscussionPage: React.FC = () => {
       id: Date.now().toString(),
       speaker: 'user',
       text: message,
-      timestamp: new Date()
+      timestamp: new Date(),
       userName: userName
     };
     setChatMessages(prev => [...prev, userMessage]);
