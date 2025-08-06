@@ -29,7 +29,6 @@ class WebSpeechProvider implements VoiceProvider {
       voices.find(voice => voice.name.includes('David')) ||
       voices.find(voice => voice.name.toLowerCase().includes('male')) ||
       voices.find(voice => voice.name.includes('Alex')) ||
-      voices.find(voice => voice.gender === 'male') ||
       voices[0];
 
     this.jordanVoice = 
@@ -37,7 +36,6 @@ class WebSpeechProvider implements VoiceProvider {
       voices.find(voice => voice.name.includes('Zira')) ||
       voices.find(voice => voice.name.toLowerCase().includes('female')) ||
       voices.find(voice => voice.name.includes('Samantha')) ||
-      voices.find(voice => voice.gender === 'female') ||
       voices[1] || voices[0];
 
     this.voicesLoaded = true;

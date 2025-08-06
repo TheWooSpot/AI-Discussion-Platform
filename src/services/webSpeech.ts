@@ -19,14 +19,12 @@ class WebSpeechService implements VoiceProvider {
     this.alexVoice = 
       voices.find(voice => voice.name.includes('Microsoft David')) ||
       voices.find(voice => voice.name.includes('David')) ||
-      voices.find(voice => voice.gender === 'male') ||
       voices.find(voice => voice.name.includes('Alex')) ||
       voices[0];
 
     this.jordanVoice = 
       voices.find(voice => voice.name.includes('Microsoft Zira')) ||
       voices.find(voice => voice.name.includes('Zira')) ||
-      voices.find(voice => voice.gender === 'female') ||
       voices.find(voice => voice.name.includes('Samantha')) ||
       voices[1] || voices[0];
 
