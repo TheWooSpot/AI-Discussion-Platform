@@ -212,10 +212,16 @@ const DiscussionPage: React.FC = () => {
 
   const playNextAudio = async (): Promise<void> => {
     if (currentAudioIndex >= audioQueue.length) {
-      setIsPlaying(false);
-      setIsTimerActive(false);
-      setCurrentSpeaker(null);
-      setDebugInfo('Discussion completed');
+      // Check if we should continue the main discussion
+      if (audioQueue.length > 0) {
+        setDebugInfo('Segment completed, discussion continues...');
+        // Don't stop the discussion, just wait for more segments or user input
+      } else {
+        setIsPlaying(false);
+        setIsTimerActive(false);
+        setCurrentSpeaker(null);
+        setDebugInfo('Discussion completed');
+      }
       return;
     }
 
@@ -286,7 +292,6 @@ const DiscussionPage: React.FC = () => {
     if (isPlaying && audioQueue.length > 0) {
       playNextAudio();
     }
-  }, [currentAudioIndex, audioQueue, isPlaying]);
 
   const parseDiscussion = (text: string): Array<{speaker: 'alex' | 'jordan', text: string}> => {
     const segments: Array<{speaker: 'alex' | 'jordan', text: string}> = [];
@@ -477,22 +482,73 @@ const DiscussionPage: React.FC = () => {
       setIsGenerating(true);
       setDebugInfo('Integrating user comment into discussion...');
       
-      // Generate a discussion segment that incorporates the user's comment
-      const prompt = `You are hosting a discussion about "${discussion.title}" with two AI moderators Alex and Jordan. A participant named ${userName} just contributed: "${message}"
+      // Generate integrated discussion that acknowledges user but continues main topic
+      const prompt = `You are hosting a discussion about "${discussion.title}" - ${discussion.description}. Two AI moderators Alex and Jordan are having an ongoing conversation when participant ${userName} contributes: "${message}"
       
-      Create a natural discussion segment where BOTH Alex and Jordan acknowledge ${userName}'s comment, paraphrase their key points, and weave their perspective into the ongoing conversation about ${discussion.description}. This should redirect the discussion slightly based on ${userName}'s input.
+      Create a natural discussion segment where:
+      1. ONE moderator (Alex OR Jordan) briefly acknowledges ${userName}'s comment and connects it to the main topic
+      2. BOTH moderators then continue the discussion about "${discussion.title}", incorporating ${userName}'s perspective as a springboard
+      3. The conversation should flow naturally back to the main topic while honoring ${userName}'s input
+      4. Keep the discussion moving forward on the original agenda
       
-      Format the response with clear speaker labels:
+      Format with clear speaker labels and make it feel like a continuous conversation:
       
-      Alex: [Alex acknowledges ${userName}'s comment, paraphrases their key point, and connects it to the main topic]
+      Alex: [Brief acknowledgment of ${userName}'s point, then transitions back to main topic with their perspective]
       
-      Jordan: [Jordan builds on Alex's response and ${userName}'s comment, adding their own perspective and asking a follow-up question or making a related point]`;
+      Jordan: [Builds on Alex's point about the main topic, may reference ${userName}'s insight, then advances the discussion further]
+      
+      Alex: [Continues the main discussion thread, keeping momentum going]
+      
+      Make it feel like the discussion naturally continues rather than ending after addressing ${userName}.`;
       
       const response = await geminiService.generateContent(prompt);
       
       // Parse the response to get both Alex and Jordan's parts
       const segments = parseDiscussion(response);
       
+      // Ensure we have multiple segments for continued discussion
+      if (segments.length < 2) {
+        // If parsing failed, create a simple acknowledgment and continuation
+        segments.push(
+          { speaker: 'alex', text: `Thanks for that insight, ${userName}. That's a really interesting perspective on ${discussion.title}. Let me build on that point...` },
+          { speaker: 'jordan', text: `Absolutely, Alex. ${userName}'s comment really highlights an important aspect of our discussion. This connects well to what we were exploring about ${discussion.description}...` }
+        );
+      }
+      
+      // Add segments to audio queue for continuous playback
+      const newAudioItems: AudioItem[] = [];
+      
+      for (const segment of segments) {
+        if (providerType === 'webspeech') {
+          const audioItem = await createAudioItem(new Blob(), segment.speaker, segment.text);
+          newAudioItems.push(audioItem);
+        } else {
+          const audioBlob = await currentProvider.generateSpeech(segment.text, segment.speaker);
+          const audioItem = await createAudioItem(audioBlob, segment.speaker, segment.text);
+          newAudioItems.push(audioItem);
+        }
+      }
+      
+      // Add to existing audio queue to continue discussion
+      setAudioQueue(prev => [...prev, ...newAudioItems]);
+      
+      // Start playing if not already playing
+      if (!isPlaying) {
+        setIsPlaying(true);
+        setIsTimerActive(true);
+        setCurrentAudioIndex(audioQueue.length); // Start from the new segments
+      }
+      
+      setDebugInfo(`Integrated ${userName}'s comment, discussion continuing with ${segments.length} new segments`);
+      
+    } catch (error) {
+      console.error('Failed to integrate user comment:', error);
+      setError('Failed to integrate your comment into the discussion');
+      setDebugInfo('Error integrating user comment');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
       // Add both moderator responses to chat
       for (const segment of segments) {
         const moderatorMessage: ChatMessage = {
@@ -504,69 +560,6 @@ const DiscussionPage: React.FC = () => {
         setChatMessages(prev => [...prev, moderatorMessage]);
       }
       
-      // Generate and play voice responses if voice is enabled
-      if (currentProvider && !isPlaying && segments.length > 0) {
-        try {
-          setDebugInfo(`Generating voice responses from moderators...`);
-          
-          for (const segment of segments) {
-            if (providerType === 'webspeech') {
-              const utterance = createWebSpeechUtterance(segment.text, segment.speaker);
-              
-              utterance.onstart = () => {
-                setCurrentSpeaker(segment.speaker);
-                setDebugInfo(`${segment.speaker} responding to ${userName} with Web Speech`);
-              };
-              
-              utterance.onend = () => {
-                setCurrentSpeaker(null);
-                setDebugInfo('Moderator response completed');
-              };
-              
-              utterance.onerror = (event) => {
-                console.error(`Web Speech error:`, event.error);
-                setCurrentSpeaker(null);
-                setError(`Voice response failed: ${event.error}`);
-              };
-              
-              speechSynthesis.cancel();
-              speechSynthesis.speak(utterance);
-            } else {
-              const audioBlob = await currentProvider.generateSpeech(segment.text, segment.speaker);
-              const audioUrl = URL.createObjectURL(audioBlob);
-              const audio = new Audio(audioUrl);
-              
-              audio.onplay = () => {
-                setCurrentSpeaker(segment.speaker);
-                setDebugInfo(`${segment.speaker} responding to ${userName} with ${currentProvider.getProviderName()}`);
-              };
-              
-              audio.onended = () => {
-                setCurrentSpeaker(null);
-                setDebugInfo('Moderator response completed');
-              };
-              
-              audio.onerror = () => {
-                setError(`Failed to play ${segment.speaker}'s response`);
-                setCurrentSpeaker(null);
-              };
-              
-              await audio.play();
-            }
-          }
-        } catch (voiceError) {
-          console.error('Voice generation failed:', voiceError);
-          setDebugInfo('Voice response failed, but text response added');
-        }
-      }
-      
-    } catch (error) {
-      console.error('Failed to generate moderator response:', error);
-      setError('Failed to generate moderator response');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
   const handleNameSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
