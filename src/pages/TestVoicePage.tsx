@@ -7,7 +7,6 @@ const TestVoicePage: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
-  const [currentUtterance, setCurrentUtterance] = useState<SpeechSynthesisUtterance | null>(null);
   const [error, setError] = useState<string>('');
   const [debugInfo, setDebugInfo] = useState<string>('');
 
@@ -74,7 +73,6 @@ const TestVoicePage: React.FC = () => {
       utterance.onend = () => {
         console.log(`✅ Web Speech completed for ${speaker}`);
         setIsPlaying(false);
-        setCurrentUtterance(null);
         setDebugInfo(`Completed ${speaker} test with Web Speech API`);
         resolve();
       };
@@ -82,14 +80,10 @@ const TestVoicePage: React.FC = () => {
       utterance.onerror = (event) => {
         console.error(`❌ Web Speech error for ${speaker}:`, event.error);
         setIsPlaying(false);
-        setCurrentUtterance(null);
         setError(`Web Speech error: ${event.error}`);
         setDebugInfo(`Error playing ${speaker} with Web Speech API: ${event.error}`);
         reject(new Error(`Web Speech error: ${event.error}`));
       };
-      
-      // Store utterance reference for stopping
-      setCurrentUtterance(utterance);
       
       // Start speaking
       console.log(`🎤 Starting Web Speech synthesis for ${speaker}...`);
@@ -158,7 +152,6 @@ const TestVoicePage: React.FC = () => {
     
     if (providerType === 'webspeech') {
       speechSynthesis.cancel();
-      setCurrentUtterance(null);
     }
     
     if (currentAudio) {
