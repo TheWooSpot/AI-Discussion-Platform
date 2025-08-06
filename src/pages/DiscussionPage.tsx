@@ -543,12 +543,166 @@ This should be about 3-4 minutes of initial moderator dialogue before users join
       }
     }, 100);
     
-    // Immediately start processing the user comment
+    // Handle user comment based on current state
     if (!isProcessingUserComment) {
-      await integrateUserCommentImmediately(message);
+      if (isPlaying && currentSpeaker) {
+        // Stage 1: Quick acknowledgment while moderator is speaking
+        await handleQuickAcknowledgment(message);
+      } else {
+        // No one speaking, integrate comment normally
+        await integrateUserCommentImmediately(message);
+      }
     }
   };
 
+  const handleQuickAcknowledgment = async (userComment: string): Promise<void> => {
+    if (isProcessingUserComment) {
+      return;
+    }
+
+    setIsProcessingUserComment(true);
+    
+    try {
+      setDebugInfo(`Quick acknowledgment for ${userName}...`);
+      
+      const currentModerator = currentSpeaker!;
+      
+      // Generate a very brief acknowledgment
+      const quickAckPrompt = `You are ${currentModerator} facilitating a discussion about "${discussion.title}". 
+
+You are currently speaking when participant ${userName} contributes: "${userComment}"
+
+Provide a VERY BRIEF acknowledgment (1 sentence maximum) that:
+- Thanks ${userName} by name
+- Shows you noticed their input
+- Indicates you'll address it properly in a moment
+- Then immediately continues with "But first, let me finish this thought..."
+
+Examples:
+"Thanks ${userName}, great point - but first, let me finish this thought..."
+"${userName}, I see your comment there - let me complete this idea first..."
+"Appreciate that ${userName} - hold that thought while I wrap up this point..."
+
+Keep it to ONE sentence that flows naturally back to continuing your previous commentary.
+
+${currentModerator.charAt(0).toUpperCase() + currentModerator.slice(1)}: [Brief acknowledgment + transition back to current topic]`;
+      
+      const response = await geminiService.generateContent(quickAckPrompt);
+      const cleanResponse = response.replace(/^(Alex|Jordan):\s*/i, '').trim();
+      
+      // Generate audio for the quick acknowledgment
+      let audioItem: AudioItem;
+      
+      if (providerType === 'webspeech') {
+        audioItem = await createAudioItem(new Blob(), currentModerator, cleanResponse);
+      } else {
+        const audioBlob = await currentProvider.generateSpeech(cleanResponse, currentModerator);
+        audioItem = await createAudioItem(audioBlob, currentModerator, cleanResponse);
+      }
+      
+      // Insert the quick acknowledgment right after the current segment
+      setAudioQueue(prev => {
+        const beforeCurrent = prev.slice(0, currentAudioIndex + 1);
+        const afterCurrent = prev.slice(currentAudioIndex + 1);
+        return [...beforeCurrent, audioItem, ...afterCurrent];
+      });
+      
+      setDebugInfo(`${userName} briefly acknowledged by ${currentModerator}`);
+      
+      // Schedule the full integration for after the current discussion segment completes
+      setTimeout(() => {
+        if (!isProcessingUserComment) {
+          integrateUserCommentDelayed(userComment);
+        }
+      }, 5000); // Wait 5 seconds before full integration
+      
+    } catch (error) {
+      console.error('Failed to generate quick acknowledgment:', error);
+      setError('Failed to acknowledge your comment');
+      setDebugInfo('Error with quick acknowledgment');
+    } finally {
+      setIsProcessingUserComment(false);
+    }
+  };
+
+  const integrateUserCommentDelayed = async (userComment: string): Promise<void> => {
+    if (isProcessingUserComment) {
+      return;
+    }
+
+    setIsProcessingUserComment(true);
+    
+    try {
+      setDebugInfo(`Now fully integrating ${userName}'s comment...`);
+      
+      // Determine which moderator should lead the integration
+      const leadModerator = currentSpeaker || 'alex';
+      const otherModerator = leadModerator === 'alex' ? 'jordan' : 'alex';
+      
+      const integrationPrompt = `You are facilitating an ongoing discussion about "${discussion.title}" - ${discussion.description}.
+
+Earlier, ${userName} contributed this comment: "${userComment}"
+
+You gave them a brief acknowledgment to be polite, but now it's time to properly integrate their valuable input into the discussion.
+
+Create a natural integration where both moderators thoughtfully address ${userName}'s contribution:
+
+1. ${leadModerator.toUpperCase()}: "Now, getting back to ${userName}'s excellent point about [specific aspect from their comment]..." Then provide 2-3 sentences that genuinely engage with their input and connect it to the main discussion.
+
+2. ${otherModerator.toUpperCase()}: Build meaningfully on ${userName}'s contribution with 2-3 sentences that show how their perspective enhances or challenges the current discussion.
+
+3. ${leadModerator.toUpperCase()}: Continue the facilitative discussion, weaving ${userName}'s insights into the broader conversation about "${discussion.title}" - 2-3 sentences.
+
+Make this feel like professional moderators who genuinely value participant input and can skillfully weave it into an ongoing discussion.
+
+Format with clear speaker labels:
+
+${leadModerator.charAt(0).toUpperCase() + leadModerator.slice(1)}: [Proper return to ${userName}'s comment and meaningful engagement - 2-3 sentences]
+
+${otherModerator.charAt(0).toUpperCase() + otherModerator.slice(1)}: [Build on ${userName}'s specific contribution - 2-3 sentences]
+
+${leadModerator.charAt(0).toUpperCase() + leadModerator.slice(1)}: [Continue discussion with ${userName}'s perspective integrated - 2-3 sentences]`;
+      
+      const response = await geminiService.generateContent(integrationPrompt);
+      const segments = parseDiscussion(response);
+      
+      // Generate audio for the integration
+      const newAudioItems: AudioItem[] = [];
+      
+      for (const segment of segments) {
+        if (providerType === 'webspeech') {
+          const audioItem = await createAudioItem(new Blob(), segment.speaker, segment.text);
+          newAudioItems.push(audioItem);
+        } else {
+          const audioBlob = await currentProvider.generateSpeech(segment.text, segment.speaker);
+          const audioItem = await createAudioItem(audioBlob, segment.speaker, segment.text);
+          newAudioItems.push(audioItem);
+        }
+      }
+      
+      // Add to audio queue
+      if (isPlaying) {
+        setAudioQueue(prev => {
+          const beforeCurrent = prev.slice(0, currentAudioIndex + 1);
+          const afterCurrent = prev.slice(currentAudioIndex + 1);
+          return [...beforeCurrent, ...newAudioItems, ...afterCurrent];
+        });
+      } else {
+        setAudioQueue(prev => [...prev, ...newAudioItems]);
+        setIsPlaying(true);
+        setIsTimerActive(true);
+      }
+      
+      setDebugInfo(`${userName}'s comment fully integrated with ${segments.length} response segments.`);
+      
+    } catch (error) {
+      console.error('Failed to integrate user comment:', error);
+      setError('Failed to fully process your comment');
+      setDebugInfo('Error integrating user comment');
+    } finally {
+      setIsProcessingUserComment(false);
+    }
+  };
   const integrateUserCommentImmediately = async (userComment: string): Promise<void> => {
     if (isProcessingUserComment) {
       return;
