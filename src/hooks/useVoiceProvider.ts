@@ -14,7 +14,7 @@ interface VoiceProviderHook {
 }
 
 // Create a global state for voice provider
-let globalProviderType: VoiceProviderType = 'elevenlabs';
+let globalProviderType: VoiceProviderType = 'webspeech';
 let globalSetProviderType: ((type: VoiceProviderType) => void) | null = null;
 const listeners: Set<() => void> = new Set();
 
