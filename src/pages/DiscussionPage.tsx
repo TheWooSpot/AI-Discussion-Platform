@@ -461,18 +461,6 @@ const DiscussionPage: React.FC = () => {
     }
     
     // Generate integrated discussion response that weaves in user comment
-    if (isPlaying) {
-      if (audioQueue[currentAudioIndex]?.type === 'webspeech') {
-        speechSynthesis.cancel();
-      } else if (audioQueue[currentAudioIndex]?.audio) {
-        audioQueue[currentAudioIndex].audio!.pause();
-      }
-      setIsPlaying(false);
-      setIsTimerActive(false);
-      setCurrentSpeaker(null);
-    }
-    
-    // Generate integrated discussion response that weaves in user comment
     try {
       setIsGenerating(true);
       setDebugInfo('Integrating user comment into discussion...');
@@ -486,32 +474,25 @@ const DiscussionPage: React.FC = () => {
       
       Alex: [Alex acknowledges ${userName}'s comment, paraphrases their key point, and connects it to the main topic]
       
-      Jordan: [Jordan builds on Alex's response and ${userName}'s comment, adding their own perspective and asking a follow-up question or making a related point]`;
+      Jordan: [Jordan builds on Alex's response and ${userName}'s input, adding their own perspective and asking a follow-up question]`;
       
       const response = await geminiService.generateContent(prompt);
       
-      // Parse the response to get both Alex and Jordan's parts
+      // Parse the response to get both moderator segments
       const segments = parseDiscussion(response);
       
-      // Add both moderator responses to chat
-      for (const segment of segments) {
-        const moderatorMessage: ChatMessage = {
-          id: (Date.now() + Math.random()).toString(),
-          speaker: segment.speaker,
-          text: segment.text,
-          timestamp: new Date()
-        };
-        setChatMessages(prev => [...prev, moderatorMessage]);
-      }
-      
-      // Generate and play voice responses if voice is enabled
-      if (currentProvider && !isPlaying && segments.length > 0) {
+      // Generate and play voice responses for both moderators
+      if (currentProvider && !isPlaying) {
         try {
-          setDebugInfo(`Generating voice responses from moderators...`);
+          setDebugInfo('Generating voice responses from both moderators...');
           
-          for (const segment of segments) {
-            if (providerType === 'webspeech') {
+          if (providerType === 'webspeech') {
+            // Create utterances for both moderators
+            for (const segment of segments) {
               const utterance = createWebSpeechUtterance(segment.text, segment.speaker);
+              
+              // Add message to chat first
+              addChatMessage(segment.speaker, segment.text);
               
               utterance.onstart = () => {
                 setCurrentSpeaker(segment.speaker);
@@ -531,10 +512,24 @@ const DiscussionPage: React.FC = () => {
               
               speechSynthesis.cancel();
               speechSynthesis.speak(utterance);
-            } else {
+              
+              // Wait for this utterance to complete before starting the next
+              await new Promise<void>((resolve) => {
+                utterance.onend = () => {
+                  setCurrentSpeaker(null);
+                  resolve();
+                };
+              });
+            }
+          } else {
+            // Generate audio for both moderators
+            for (const segment of segments) {
               const audioBlob = await currentProvider.generateSpeech(segment.text, segment.speaker);
               const audioUrl = URL.createObjectURL(audioBlob);
               const audio = new Audio(audioUrl);
+              
+              // Add message to chat first
+              addChatMessage(segment.speaker, segment.text);
               
               audio.onplay = () => {
                 setCurrentSpeaker(segment.speaker);
@@ -552,6 +547,14 @@ const DiscussionPage: React.FC = () => {
               };
               
               await audio.play();
+              
+              // Wait for this audio to complete before starting the next
+              await new Promise<void>((resolve) => {
+                audio.onended = () => {
+                  setCurrentSpeaker(null);
+                  resolve();
+                };
+              });
             }
           }
         } catch (voiceError) {
