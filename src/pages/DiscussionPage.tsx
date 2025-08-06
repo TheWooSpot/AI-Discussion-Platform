@@ -461,6 +461,18 @@ const DiscussionPage: React.FC = () => {
     }
     
     // Generate integrated discussion response that weaves in user comment
+    if (isPlaying) {
+      if (audioQueue[currentAudioIndex]?.type === 'webspeech') {
+        speechSynthesis.cancel();
+      } else if (audioQueue[currentAudioIndex]?.audio) {
+        audioQueue[currentAudioIndex].audio!.pause();
+      }
+      setIsPlaying(false);
+      setIsTimerActive(false);
+      setCurrentSpeaker(null);
+    }
+    
+    // Generate integrated discussion response that weaves in user comment
     try {
       setIsGenerating(true);
       setDebugInfo('Integrating user comment into discussion...');
@@ -474,27 +486,26 @@ const DiscussionPage: React.FC = () => {
       
       Alex: [Alex acknowledges ${userName}'s comment, paraphrases their key point, and connects it to the main topic]
       
-      Jordan: [Jordan's response that builds on both ${userName}'s comment and Alex's points, perhaps offering a different perspective or additional insights]`;
+      Jordan: [Jordan builds on Alex's response and ${userName}'s comment, adding their own perspective and asking a follow-up question or making a related point]`;
       
       const response = await geminiService.generateContent(prompt);
       
-      // Parse the response to get both Alex and Jordan segments
+      // Parse the response to get both Alex and Jordan's parts
       const segments = parseDiscussion(response);
       
-      // Add all moderator responses to chat with animation
+      // Add both moderator responses to chat
       for (const segment of segments) {
-        const message: ChatMessage = {
+        const moderatorMessage: ChatMessage = {
           id: (Date.now() + Math.random()).toString(),
           speaker: segment.speaker,
           text: segment.text,
-          timestamp: new Date(),
-          isAnimating: true
+          timestamp: new Date()
         };
-        setChatMessages(prev => [...prev, message]);
+        setChatMessages(prev => [...prev, moderatorMessage]);
       }
       
-      // Generate and play voice responses for each segment
-      if (currentProvider && segments.length > 0) {
+      // Generate and play voice responses if voice is enabled
+      if (currentProvider && !isPlaying && segments.length > 0) {
         try {
           setDebugInfo(`Generating voice responses from moderators...`);
           
