@@ -431,7 +431,38 @@ const DiscussionPage: React.FC = () => {
     
     try {
       console.log('🤖 Generating content with Gemini...');
-      const response = await geminiService.generateDiscussion(discussion.title, discussion.description);
+      
+      // Generate initial facilitative discussion between moderators
+      const initialPrompt = `Create a natural, engaging discussion between two AI hosts about "${discussion.title}".
+
+Topic: ${discussion.title}
+Description: ${discussion.description}
+
+IMPORTANT: This is the INITIAL discussion between the two moderators before any user participation. Format with clear speaker labels:
+
+Alex: [Alex provides a warm introduction to the topic and shares initial thoughts - 2-3 sentences]
+
+Jordan: [Jordan acknowledges Alex's points and contributes additional concerns or issues related to the topic - 2-3 sentences]
+
+Alex: [Alex responds to Jordan's points and expands the discussion with more insights - 2-3 sentences]
+
+Jordan: [Jordan builds on the conversation with deeper analysis or different perspectives - 2-3 sentences]
+
+Alex: [Alex continues the facilitative discussion, perhaps posing thought-provoking questions - 2-3 sentences]
+
+Jordan: [Jordan responds and opens the door for broader participation in the discussion - 2-3 sentences]
+
+Make it sound like a professional, facilitative discussion where:
+- Both moderators introduce the topic thoroughly
+- They build on each other's points naturally
+- The conversation flows smoothly between speakers
+- They establish the foundation for user participation
+- Each speaking turn is 2-3 sentences for optimal voice generation
+- The discussion feels welcoming and engaging
+
+This should be about 3-4 minutes of initial moderator dialogue before users join.`;
+
+      const response = await geminiService.generateContent(initialPrompt);
       console.log('✅ Gemini response received');
       setDebugInfo(`Content generated, creating speech with ${currentProvider.getProviderName()}...`);
       
@@ -530,29 +561,29 @@ const DiscussionPage: React.FC = () => {
       const currentModerator = currentSpeaker || 'alex';
       const nextModerator = currentModerator === 'alex' ? 'jordan' : 'alex';
       
-      const prompt = `You are hosting a discussion about "${discussion.title}" - ${discussion.description}.
+      const prompt = `You are facilitating an ongoing discussion about "${discussion.title}" - ${discussion.description}.
 
-The discussion is in progress when participant ${userName} contributes: "${userComment}"
+The discussion between Alex and Jordan is flowing naturally when participant ${userName} contributes this insightful comment: "${userComment}"
 
-Create an immediate, natural integration where:
+Create a natural, facilitative integration where both moderators acknowledge and build upon ${userName}'s contribution:
 
-1. ${currentModerator.toUpperCase()}: Finishes their current thought, then smoothly acknowledges "${userName}, that's a great point about [paraphrase key aspect of their comment]" and diplomatically weaves 1-2 key notions from ${userName}'s input into their concluding remarks about "${discussion.title}"
+1. ${currentModerator.toUpperCase()}: Acknowledges ${userName} by name and identifies the key insights in their comment: "${userName}, that's an excellent point about [specific aspect from their comment]." Then diplomatically weaves 1-2 key notions from ${userName}'s input into their response, connecting it back to the main topic.
 
-2. ${nextModerator.toUpperCase()}: Picks up immediately with direct reflection on ${userName}'s specific input, saying something like "${userName} raises an important perspective on [specific aspect]..." and then builds meaningfully on their insight
+2. ${nextModerator.toUpperCase()}: Builds directly on ${userName}'s contribution with something like "${userName} raises a crucial point about [specific aspect from their comment]..." and then expands meaningfully on their insight, showing how it enhances the discussion.
 
-3. Continue the discussion naturally, with ${userName}'s input now seamlessly woven into the conversation as an enhancement that offers more insightful value for both moderators to reflect upon
+3. ${currentModerator.toUpperCase()}: Continues the facilitative discussion, incorporating ${userName}'s perspective as a valuable addition that deepens the conversation about "${discussion.title}".
 
-4. The integration should feel immediate and natural - not queued or delayed, but as if ${userName} just contributed to a live conversation
+The integration should feel like professional moderators acknowledging a valuable participant contribution in a live discussion.
 
 Format with clear speaker labels:
 
-${currentModerator}: [Acknowledges ${userName} by name and integrates their key points into finishing thoughts]
+${currentModerator.charAt(0).toUpperCase() + currentModerator.slice(1)}: [Acknowledges ${userName} by name, identifies key insights from their comment, and weaves their input into the discussion - 2-3 sentences]
 
-${nextModerator}: [Direct reflection on ${userName}'s input and builds meaningfully on their perspective]
+${nextModerator.charAt(0).toUpperCase() + nextModerator.slice(1)}: [Builds directly on ${userName}'s specific contribution and expands on their insights - 2-3 sentences]
 
-${currentModerator}: [Continues the enhanced discussion incorporating ${userName}'s valuable insights]
+${currentModerator.charAt(0).toUpperCase() + currentModerator.slice(1)}: [Continues the facilitative discussion with ${userName}'s perspective now woven in - 2-3 sentences]
 
-Make ${userName} feel immediately heard and valued while keeping the discussion momentum strong.`;
+Make ${userName} feel genuinely heard and valued as a contributor to this facilitative discussion.`;
       
       const response = await geminiService.generateContent(prompt);
       const segments = parseDiscussion(response);
@@ -560,9 +591,9 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
       // Ensure we have at least 3 segments for proper integration
       if (segments.length < 3) {
         segments.push(
-          { speaker: currentModerator, text: `${userName}, that's a valuable perspective. Your point about the key aspects of ${userComment} really enhances our exploration of ${discussion.title}...` },
-          { speaker: nextModerator, text: `${userName} raises an excellent point. Building on what they've shared, I think this opens up new dimensions in our discussion of ${discussion.description}...` },
-          { speaker: currentModerator, text: `Exactly, and with ${userName}'s insight, we can see how this connects to the broader implications of ${discussion.title}...` }
+          { speaker: currentModerator, text: `${userName}, that's a valuable perspective. Your insights about ${userComment.substring(0, 50)}... really enhance our exploration of ${discussion.title}.` },
+          { speaker: nextModerator, text: `${userName} raises an excellent point. Building on what they've shared, this opens up new dimensions in our discussion.` },
+          { speaker: currentModerator, text: `Exactly, and with ${userName}'s contribution, we can see how this connects to the broader implications we're exploring.` }
         );
       }
       
@@ -595,7 +626,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
         setIsTimerActive(true);
       }
       
-      setDebugInfo(`${userName}'s comment integrated immediately with ${segments.length} response segments.`);
+      setDebugInfo(`${userName}'s comment acknowledged by both moderators with ${segments.length} response segments.`);
       
     } catch (error) {
       console.error('Failed to integrate user comment:', error);
@@ -816,7 +847,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                 ) : (
                   <div className="space-y-4">
                     {chatMessages.map((message) => (
-                      <div key={message.id} className="grid grid-cols-3 gap-4 items-start opacity-100 transition-opacity duration-300">
+                    <p className="text-gray-400">Listen to Alex and Jordan discuss the topic, then join the conversation!</p>
                         {/* Alex Column */}
                         <div className="flex justify-start">
                           {message.speaker === 'alex' && (
@@ -896,7 +927,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                       type="text"
                       value={userInput}
                       onChange={(e) => setUserInput(e.target.value)}
-                      placeholder={`${userName}, share your thoughts on this topic...`}
+                      placeholder={`${userName}, what are your thoughts on this discussion?`}
                       className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       disabled={isGenerating}
                     />
