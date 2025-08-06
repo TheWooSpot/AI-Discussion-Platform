@@ -292,6 +292,7 @@ const DiscussionPage: React.FC = () => {
     if (isPlaying && audioQueue.length > 0) {
       playNextAudio();
     }
+  }, [currentAudioIndex, isPlaying, audioQueue]);
 
   const parseDiscussion = (text: string): Array<{speaker: 'alex' | 'jordan', text: string}> => {
     const segments: Array<{speaker: 'alex' | 'jordan', text: string}> = [];
@@ -466,18 +467,6 @@ const DiscussionPage: React.FC = () => {
     }
     
     // Generate integrated discussion response that weaves in user comment
-    if (isPlaying) {
-      if (audioQueue[currentAudioIndex]?.type === 'webspeech') {
-        speechSynthesis.cancel();
-      } else if (audioQueue[currentAudioIndex]?.audio) {
-        audioQueue[currentAudioIndex].audio!.pause();
-      }
-      setIsPlaying(false);
-      setIsTimerActive(false);
-      setCurrentSpeaker(null);
-    }
-    
-    // Generate integrated discussion response that weaves in user comment
     try {
       setIsGenerating(true);
       setDebugInfo('Integrating user comment into discussion...');
@@ -541,14 +530,6 @@ const DiscussionPage: React.FC = () => {
       
       setDebugInfo(`Integrated ${userName}'s comment, discussion continuing with ${segments.length} new segments`);
       
-    } catch (error) {
-      console.error('Failed to integrate user comment:', error);
-      setError('Failed to integrate your comment into the discussion');
-      setDebugInfo('Error integrating user comment');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
       // Add both moderator responses to chat
       for (const segment of segments) {
         const moderatorMessage: ChatMessage = {
@@ -559,6 +540,14 @@ const DiscussionPage: React.FC = () => {
         };
         setChatMessages(prev => [...prev, moderatorMessage]);
       }
+      
+    } catch (error) {
+      console.error('Failed to integrate user comment:', error);
+      setError('Failed to integrate your comment into the discussion');
+      setDebugInfo('Error integrating user comment');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleNameSubmit = (e: React.FormEvent): void => {
