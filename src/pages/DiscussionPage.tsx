@@ -297,6 +297,10 @@ const DiscussionPage: React.FC = () => {
         };
         
         utterance.onerror = (event) => {
+          if (event.error === 'interrupted') {
+            console.log(`🔄 Web Speech interrupted for ${speaker} (expected behavior)`);
+            return;
+          }
           console.error(`❌ Web Speech error for ${speaker}:`, event.error);
           setError(`Web Speech error: ${event.error}`);
           setIsPlaying(false);
