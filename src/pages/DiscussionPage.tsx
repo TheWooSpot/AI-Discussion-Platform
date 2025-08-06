@@ -559,7 +559,7 @@ const DiscussionPage: React.FC = () => {
         };
         setChatMessages(prev => [...prev, moderatorMessage]);
       }
-      
+  };
 
   const handleNameSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
