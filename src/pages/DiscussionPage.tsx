@@ -486,65 +486,73 @@ const DiscussionPage: React.FC = () => {
       
       Alex: [Alex acknowledges ${userName}'s comment, paraphrases their key point, and connects it to the main topic]
       
+      Jordan: [Jordan builds on Alex's response and ${userName}'s comment, adding their own perspective and asking a follow-up question or making a related point]`;
       
       const response = await geminiService.generateContent(prompt);
       
-      // Add moderator response to chat
-      const moderatorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        speaker: moderator,
-        text: response,
-        timestamp: new Date()
-      };
-      setChatMessages(prev => [...prev, moderatorMessage]);
+      // Parse the response to get both Alex and Jordan's parts
+      const segments = parseDiscussion(response);
       
-      // Generate and play voice response if voice is enabled
-      if (currentProvider && !isPlaying) {
+      // Add both moderator responses to chat
+      for (const segment of segments) {
+        const moderatorMessage: ChatMessage = {
+          id: (Date.now() + Math.random()).toString(),
+          speaker: segment.speaker,
+          text: segment.text,
+          timestamp: new Date()
+        };
+        setChatMessages(prev => [...prev, moderatorMessage]);
+      }
+      
+      // Generate and play voice responses if voice is enabled
+      if (currentProvider && !isPlaying && segments.length > 0) {
         try {
-          setDebugInfo(`Generating voice response from ${moderator}...`);
+          setDebugInfo(`Generating voice responses from moderators...`);
           
-          if (providerType === 'webspeech') {
-            const utterance = createWebSpeechUtterance(response, moderator);
-            
-            utterance.onstart = () => {
-              setCurrentSpeaker(moderator);
-              setDebugInfo(`${moderator} responding to ${userName} with Web Speech`);
-            };
-            
-            utterance.onend = () => {
-              setCurrentSpeaker(null);
-              setDebugInfo('Moderator response completed');
-            };
-            
-            utterance.onerror = (event) => {
-              console.error(`Web Speech error:`, event.error);
-              setCurrentSpeaker(null);
-              setError(`Voice response failed: ${event.error}`);
-            };
-            
-            speechSynthesis.cancel();
-            speechSynthesis.speak(utterance);
-          } else {
-            const audioBlob = await currentProvider.generateSpeech(response, moderator);
-            const audioUrl = URL.createObjectURL(audioBlob);
-            const audio = new Audio(audioUrl);
-            
-            audio.onplay = () => {
-              setCurrentSpeaker(moderator);
-              setDebugInfo(`${moderator} responding to ${userName} with ${currentProvider.getProviderName()}`);
-            };
-            
-            audio.onended = () => {
-              setCurrentSpeaker(null);
-              setDebugInfo('Moderator response completed');
-            };
-            
-            audio.onerror = () => {
-              setError(`Failed to play ${moderator}'s response`);
-              setCurrentSpeaker(null);
-            };
-            
-            await audio.play();
+          for (const segment of segments) {
+            if (providerType === 'webspeech') {
+              const utterance = createWebSpeechUtterance(segment.text, segment.speaker);
+              
+              utterance.onstart = () => {
+                setCurrentSpeaker(segment.speaker);
+                setDebugInfo(`${segment.speaker} responding to ${userName} with Web Speech`);
+              };
+              
+              utterance.onend = () => {
+                setCurrentSpeaker(null);
+                setDebugInfo('Moderator response completed');
+              };
+              
+              utterance.onerror = (event) => {
+                console.error(`Web Speech error:`, event.error);
+                setCurrentSpeaker(null);
+                setError(`Voice response failed: ${event.error}`);
+              };
+              
+              speechSynthesis.cancel();
+              speechSynthesis.speak(utterance);
+            } else {
+              const audioBlob = await currentProvider.generateSpeech(segment.text, segment.speaker);
+              const audioUrl = URL.createObjectURL(audioBlob);
+              const audio = new Audio(audioUrl);
+              
+              audio.onplay = () => {
+                setCurrentSpeaker(segment.speaker);
+                setDebugInfo(`${segment.speaker} responding to ${userName} with ${currentProvider.getProviderName()}`);
+              };
+              
+              audio.onended = () => {
+                setCurrentSpeaker(null);
+                setDebugInfo('Moderator response completed');
+              };
+              
+              audio.onerror = () => {
+                setError(`Failed to play ${segment.speaker}'s response`);
+                setCurrentSpeaker(null);
+              };
+              
+              await audio.play();
+            }
           }
         } catch (voiceError) {
           console.error('Voice generation failed:', voiceError);
