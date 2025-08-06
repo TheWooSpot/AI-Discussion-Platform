@@ -83,6 +83,9 @@ const DiscussionPage: React.FC = () => {
   const [tempUserName, setTempUserName] = useState<string>('');
   const [isProcessingUserComment, setIsProcessingUserComment] = useState<boolean>(false);
 
+  // Animation state for chat messages
+  const [animatingMessages, setAnimatingMessages] = useState<Set<string>>(new Set());
+
   const discussion = discussions.find(d => d.id === topicId) || discussions[0];
 
   const bulletPoints: string[] = [
@@ -205,10 +208,39 @@ const DiscussionPage: React.FC = () => {
     const message: ChatMessage = {
       id: Date.now().toString(),
       speaker,
-      text: text, // Show full text immediately for visibility
+      text: '', // Start with empty text for animation
       timestamp: new Date()
     };
     setChatMessages(prev => [...prev, message]);
+    
+    // Mark message as animating
+    setAnimatingMessages(prev => new Set([...prev, message.id]));
+    
+    // Animate text character by character
+    let currentIndex = 0;
+    const animateText = () => {
+      if (currentIndex < text.length) {
+        setChatMessages(prev => 
+          prev.map(msg => 
+            msg.id === message.id 
+              ? { ...msg, text: text.substring(0, currentIndex + 1) }
+              : msg
+          )
+        );
+        currentIndex++;
+        setTimeout(animateText, 30); // 30ms per character
+      } else {
+        // Animation complete
+        setAnimatingMessages(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(message.id);
+          return newSet;
+        });
+      }
+    };
+    
+    // Start animation after a brief delay to sync with voice
+    setTimeout(animateText, 200);
     
     // Auto-scroll to bottom to show new message
     setTimeout(() => {
@@ -216,7 +248,7 @@ const DiscussionPage: React.FC = () => {
       if (chatContainer) {
         chatContainer.scrollTop = chatContainer.scrollHeight;
       }
-    }, 100);
+    }, 250); // Slightly longer delay to account for animation start
   };
 
   const playNextAudio = async (): Promise<void> => {
@@ -687,7 +719,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
             </div>
 
             {/* Chat Bubbles Area */}
-            <div className="bg-gray-800 rounded-lg p-8">
+            <div className="bg-gray-800 rounded-lg p-8 pb-4">
               {/* Name Prompt Modal */}
               {showNamePrompt && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -722,7 +754,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                 </div>
               )}
 
-              <div className="h-96 overflow-y-auto mb-4 space-y-4 chat-container">
+              <div className="h-96 overflow-y-auto mb-6 space-y-4 chat-container pb-4">
                 {chatMessages.length === 0 ? (
                   <div className="text-center text-gray-400 mt-32">
                     <div className="w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-6 flex items-center justify-center">
@@ -785,6 +817,9 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                                 {currentSpeaker === 'alex' && (
                                   <div className="w-2 h-2 bg-blue-300 rounded-full animate-pulse"></div>
                                 )}
+                                {animatingMessages.has(message.id) && (
+                                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                                )}
                               </div>
                               <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.text}</p>
                             </div>
@@ -820,6 +855,9 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
                                 {currentSpeaker === 'jordan' && (
                                   <div className="w-2 h-2 bg-purple-300 rounded-full animate-pulse"></div>
                                 )}
+                                {animatingMessages.has(message.id) && (
+                                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
+                                )}
                               </div>
                               <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.text}</p>
                             </div>
@@ -833,7 +871,7 @@ Make ${userName} feel immediately heard and valued while keeping the discussion 
 
               {/* User Input Text Box */}
               {!showNamePrompt && (
-                <div className="border-t border-gray-700 pt-4">
+                <div className="border-t border-gray-700 pt-6 mt-4">
                   <div className="flex items-center space-x-3 mb-3">
                     <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
                       <span className="text-sm font-bold text-white">{userName.charAt(0).toUpperCase()}</span>
