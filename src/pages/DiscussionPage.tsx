@@ -453,17 +453,18 @@ const DiscussionPage: React.FC = () => {
       setIsGenerating(true);
       setDebugInfo('Generating moderator response to user...');
       
-      const prompt = `You are ${Math.random() > 0.5 ? 'Alex' : 'Jordan'}, an AI discussion moderator. A user just joined the conversation about "${discussion.title}" and said: "${message}"
+      const moderator: 'alex' | 'jordan' = Math.random() > 0.5 ? 'alex' : 'jordan';
+      const prompt = `You are ${moderator === 'alex' ? 'Alex' : 'Jordan'}, an AI discussion moderator. A user named ${userName} just joined the conversation about "${discussion.title}" and said: "${message}"
       
-      Respond naturally as if you're acknowledging their comment and inviting them into the discussion. Keep it conversational, welcoming, and relevant to the topic. Your response should be 1-2 sentences that:
+      Respond naturally as if you're acknowledging their comment and inviting them into the discussion. Keep it conversational, welcoming, and relevant to the topic. Your response should be 2-3 sentences that:
       1. Acknowledge what they said
-      2. Ask a follow-up question or invite them to elaborate
+      2. Welcome them by name to the discussion
       3. Connect it back to the main discussion topic
+      4. Ask a follow-up question or invite them to elaborate
       
-      Be warm and engaging, as if you're a real podcast host welcoming a caller.`;
+      Be warm and engaging, as if you're a real podcast host welcoming a caller. Start with something like "Thanks for joining us, ${userName}!" or "Great point, ${userName}!"`;
       
       const response = await geminiService.generateContent(prompt);
-      const moderator = Math.random() > 0.5 ? 'alex' : 'jordan';
       
       // Add moderator response to chat
       const moderatorMessage: ChatMessage = {
@@ -480,14 +481,34 @@ const DiscussionPage: React.FC = () => {
           setDebugInfo(`Generating voice response from ${moderator}...`);
           
           if (providerType === 'webspeech') {
-            await playWebSpeech(response, moderator);
+            const utterance = createWebSpeechUtterance(response, moderator);
+            
+            utterance.onstart = () => {
+              setCurrentSpeaker(moderator);
+              setDebugInfo(`${moderator} responding to ${userName} with Web Speech`);
+            };
+            
+            utterance.onend = () => {
+              setCurrentSpeaker(null);
+              setDebugInfo('Moderator response completed');
+            };
+            
+            utterance.onerror = (event) => {
+              console.error(`Web Speech error:`, event.error);
+              setCurrentSpeaker(null);
+              setError(`Voice response failed: ${event.error}`);
+            };
+            
+            speechSynthesis.cancel();
+            speechSynthesis.speak(utterance);
           } else {
             const audioBlob = await currentProvider.generateSpeech(response, moderator);
-            const audio = createAudioElement(audioBlob, moderator);
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
             
             audio.onplay = () => {
               setCurrentSpeaker(moderator);
-              setDebugInfo(`${moderator} responding to user with ${currentProvider.getProviderName()}`);
+              setDebugInfo(`${moderator} responding to ${userName} with ${currentProvider.getProviderName()}`);
             };
             
             audio.onended = () => {
@@ -648,7 +669,7 @@ const DiscussionPage: React.FC = () => {
                   <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4">
                     <h2 className="text-2xl font-bold mb-4 text-center">Welcome to the Discussion!</h2>
                     <p className="text-gray-300 mb-6 text-center">
-                      Please enter your name to join the conversation with Alex and Jordan.
+                      Please enter your name to join the conversation with Alex and Jordan about "{discussion.title}".
                     </p>
                     <form onSubmit={handleNameSubmit}>
                       <input
@@ -658,6 +679,7 @@ const DiscussionPage: React.FC = () => {
                         placeholder="Enter your name..."
                         className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
                         autoFocus
+                        maxLength={50}
                       />
                       <button
                         type="submit"
@@ -716,6 +738,7 @@ const DiscussionPage: React.FC = () => {
                     ) : (
                       <div className="space-y-2">
                         <p className="text-gray-400">Click "Start Discussion" to begin the AI-powered conversation</p>
+                        <p className="text-gray-400">Or type a message below to join the conversation!</p>
                         <p className="text-sm text-blue-400">Using: {currentProvider.getProviderName()}</p>
                       </div>
                     )}
@@ -791,8 +814,9 @@ const DiscussionPage: React.FC = () => {
                       type="text"
                       value={userInput}
                       onChange={(e) => setUserInput(e.target.value)}
-                      placeholder={`${userName}, share your thoughts on ${discussion.title.toLowerCase()}...`}
+                      placeholder={`${userName}, share your thoughts on this topic...`}
                       className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      disabled={isGenerating}
                     />
                     <button
                       type="submit"
@@ -810,6 +834,12 @@ const DiscussionPage: React.FC = () => {
                       )}
                     </button>
                   </form>
+                  {isGenerating && (
+                    <div className="mt-2 text-sm text-yellow-400 flex items-center">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-400 mr-2"></div>
+                      AI moderator is preparing a response...
+                    </div>
+                  )}
                 </div>
               )}
             </div>
