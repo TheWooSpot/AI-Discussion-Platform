@@ -7,7 +7,6 @@ export default function VoiceProviderToggle() {
   const { 
     providerType, 
     setProviderType, 
-    currentProvider,
     isWebSpeechAvailable, 
     isElevenLabsAvailable 
   } = useVoiceProvider();
