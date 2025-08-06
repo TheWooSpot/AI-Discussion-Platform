@@ -81,8 +81,6 @@ const DiscussionPage: React.FC = () => {
   const [userName, setUserName] = useState<string>('');
   const [showNamePrompt, setShowNamePrompt] = useState<boolean>(true);
   const [tempUserName, setTempUserName] = useState<string>('');
-  const [animatingMessageId, setAnimatingMessageId] = useState<string | null>(null);
-  const [animatedText, setAnimatedText] = useState<string>('');
 
   const discussion = discussions.find(d => d.id === topicId) || discussions[0];
 
@@ -458,3 +456,421 @@ const DiscussionPage: React.FC = () => {
         audioQueue[currentAudioIndex].audio!.pause();
       }
       setIsPlaying(false);
+      setIsTimerActive(false);
+      setCurrentSpeaker(null);
+    }
+    
+    // Generate integrated discussion response that weaves in user comment
+    if (isPlaying) {
+      if (audioQueue[currentAudioIndex]?.type === 'webspeech') {
+        speechSynthesis.cancel();
+      } else if (audioQueue[currentAudioIndex]?.audio) {
+        audioQueue[currentAudioIndex].audio!.pause();
+      }
+      setIsPlaying(false);
+      setIsTimerActive(false);
+      setCurrentSpeaker(null);
+    }
+    
+    // Generate integrated discussion response that weaves in user comment
+    try {
+      setIsGenerating(true);
+      setDebugInfo('Integrating user comment into discussion...');
+      
+      // Generate a discussion segment that incorporates the user's comment
+      const prompt = `You are hosting a discussion about "${discussion.title}" with two AI moderators Alex and Jordan. A participant named ${userName} just contributed: "${message}"
+      
+      Create a natural discussion segment where BOTH Alex and Jordan acknowledge ${userName}'s comment, paraphrase their key points, and weave their perspective into the ongoing conversation about ${discussion.description}. This should redirect the discussion slightly based on ${userName}'s input.
+      
+      Format the response with clear speaker labels:
+      
+      Alex: [Alex acknowledges ${userName}'s comment, paraphrases their key point, and connects it to the main topic]
+      
+      
+      const response = await geminiService.generateContent(prompt);
+      
+      // Add moderator response to chat
+      const moderatorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        speaker: moderator,
+        text: response,
+        timestamp: new Date()
+      };
+      setChatMessages(prev => [...prev, moderatorMessage]);
+      
+      // Generate and play voice response if voice is enabled
+      if (currentProvider && !isPlaying) {
+        try {
+          setDebugInfo(`Generating voice response from ${moderator}...`);
+          
+          if (providerType === 'webspeech') {
+            const utterance = createWebSpeechUtterance(response, moderator);
+            
+            utterance.onstart = () => {
+              setCurrentSpeaker(moderator);
+              setDebugInfo(`${moderator} responding to ${userName} with Web Speech`);
+            };
+            
+            utterance.onend = () => {
+              setCurrentSpeaker(null);
+              setDebugInfo('Moderator response completed');
+            };
+            
+            utterance.onerror = (event) => {
+              console.error(`Web Speech error:`, event.error);
+              setCurrentSpeaker(null);
+              setError(`Voice response failed: ${event.error}`);
+            };
+            
+            speechSynthesis.cancel();
+            speechSynthesis.speak(utterance);
+          } else {
+            const audioBlob = await currentProvider.generateSpeech(response, moderator);
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+            
+            audio.onplay = () => {
+              setCurrentSpeaker(moderator);
+              setDebugInfo(`${moderator} responding to ${userName} with ${currentProvider.getProviderName()}`);
+            };
+            
+            audio.onended = () => {
+              setCurrentSpeaker(null);
+              setDebugInfo('Moderator response completed');
+            };
+            
+            audio.onerror = () => {
+              setError(`Failed to play ${moderator}'s response`);
+              setCurrentSpeaker(null);
+            };
+            
+            await audio.play();
+          }
+        } catch (voiceError) {
+          console.error('Voice generation failed:', voiceError);
+          setDebugInfo('Voice response failed, but text response added');
+        }
+      }
+      
+    } catch (error) {
+      console.error('Failed to generate moderator response:', error);
+      setError('Failed to generate moderator response');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleNameSubmit = (e: React.FormEvent): void => {
+    e.preventDefault();
+    if (tempUserName.trim()) {
+      setUserName(tempUserName.trim());
+      setShowNamePrompt(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Left Sidebar */}
+          <div className="lg:col-span-1">
+            <div className="bg-gray-800 rounded-lg p-6 sticky top-8">
+              <h3 className="text-lg font-semibold mb-4">Discussion Points</h3>
+              <ul className="space-y-3">
+                {bulletPoints.map((point, index) => (
+                  <li key={index} className="flex items-start">
+                    <span className="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                    <span className="text-gray-300 text-sm">{point}</span>
+                  </li>
+                ))}
+              </ul>
+              
+              {/* Timer */}
+              <div className="mt-8 p-4 bg-gray-700 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-400">Time Remaining</span>
+                  <span className="text-lg font-mono">{formatTime(timeLeft)}</span>
+                </div>
+                <div className="w-full bg-gray-600 rounded-full h-2">
+                  <div 
+                    className={`h-2 rounded-full transition-all duration-1000 ${getProgressColor()}`}
+                    style={{ width: `${(timeLeft / (12 * 60)) * 100}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Debug Panel */}
+              <div className="mt-6 p-4 bg-gray-700 rounded-lg">
+                <h4 className="text-sm font-semibold mb-2 text-yellow-400">Debug Info</h4>
+                <div className="text-xs text-gray-300 space-y-1">
+                  <div className="font-semibold text-green-400">Active Provider: {currentProvider.getProviderName()}</div>
+                  <div>Provider Type: {providerType}</div>
+                  <div>Status: {debugInfo || 'Ready'}</div>
+                  {error && <div className="text-red-400">Error: {error}</div>}
+                  <div>Generating: {isGenerating ? 'Yes' : 'No'}</div>
+                  <div>Playing: {isPlaying ? 'Yes' : 'No'}</div>
+                  <div>Current Speaker: {currentSpeaker || 'None'}</div>
+                  <div>Audio Queue: {audioQueue.length} segments</div>
+                  <div>Current Segment: {currentAudioIndex + 1}/{audioQueue.length}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="lg:col-span-3">
+            {/* Discussion Header */}
+            <div className="bg-gray-800 rounded-lg p-8 mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <span className={`px-3 py-1 rounded-full text-xs font-medium bg-gray-700 ${getCategoryColor(discussion.category)}`}>
+                  {discussion.category}
+                </span>
+                <div className="flex items-center space-x-4 text-sm text-gray-400">
+                  <span>{discussion.participants.toLocaleString()} participants</span>
+                  <span>{discussion.duration}</span>
+                  <span className={`px-2 py-1 rounded text-xs ${
+                    discussion.status === 'live' ? 'bg-red-600 text-white' : 
+                    discussion.status === 'upcoming' ? 'bg-yellow-600 text-white' : 
+                    'bg-gray-600 text-gray-300'
+                  }`}>
+                    {discussion.status.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+              
+              <h1 className={`text-3xl font-bold mb-4 ${getCategoryColor(discussion.category)}`}>
+                {discussion.title}
+              </h1>
+              
+              <p className="text-gray-300 text-lg mb-6">
+                {discussion.description}
+              </p>
+
+              {/* Play Controls */}
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={handlePlayPause}
+                  disabled={isGenerating}
+                  className={`flex items-center space-x-2 px-6 py-3 rounded-lg font-medium transition-colors ${
+                    isGenerating 
+                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      : isPlaying 
+                        ? 'bg-red-600 hover:bg-red-700 text-white' 
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  {isGenerating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      <span>Generating...</span>
+                    </>
+                  ) : isPlaying ? (
+                    <>
+                      <PauseIcon className="h-5 w-5" />
+                      <span>Pause Discussion</span>
+                    </>
+                  ) : (
+                    <>
+                      <PlayIcon className="h-5 w-5" />
+                      <span>Start Discussion ({providerType})</span>
+                    </>
+                  )}
+                </button>
+
+                <button className="flex items-center space-x-2 px-4 py-3 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors">
+                  <MicrophoneIcon className="h-5 w-5" />
+                  <span>Join Discussion</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Chat Bubbles Area */}
+            <div className="bg-gray-800 rounded-lg p-8">
+              {/* Name Prompt Modal */}
+              {showNamePrompt && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4">
+                    <h2 className="text-2xl font-bold mb-4 text-center">Welcome to the Discussion!</h2>
+                    <p className="text-gray-300 mb-6 text-center">
+                      Please enter your name to join the conversation with Alex and Jordan about "{discussion.title}".
+                    </p>
+                    <form onSubmit={handleNameSubmit}>
+                      <input
+                        type="text"
+                        value={tempUserName}
+                        onChange={(e) => setTempUserName(e.target.value)}
+                        placeholder="Enter your name..."
+                        className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
+                        autoFocus
+                        maxLength={50}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!tempUserName.trim()}
+                        className={`w-full py-3 rounded-lg font-medium transition-colors ${
+                          tempUserName.trim()
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                            : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                        }`}
+                      >
+                        Join Discussion
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              <div className="h-96 overflow-y-auto mb-4 space-y-4">
+                {chatMessages.length === 0 ? (
+                  <div className="text-center text-gray-400 mt-32">
+                    <div className="w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-6 flex items-center justify-center">
+                      <div className={`w-16 h-16 rounded-full ${isPlaying ? 'animate-pulse bg-white' : 'bg-gray-300'}`}></div>
+                    </div>
+                    <h2 className="text-2xl font-bold mb-4">AI Discussion Chamber</h2>
+                    {isPlaying ? (
+                      <div className="space-y-4">
+                        <p className="text-lg text-blue-400">🎙️ Discussion in progress with {currentProvider.getProviderName()}</p>
+                        <div className="flex justify-center space-x-8">
+                          <div className="text-center">
+                            <div className={`w-12 h-12 rounded-full mb-2 ${
+                              currentSpeaker === 'alex' 
+                                ? 'bg-blue-500 animate-pulse' 
+                                : 'bg-gray-600'
+                            }`}></div>
+                            <p className={`text-sm ${
+                              currentSpeaker === 'alex' ? 'text-blue-400 font-semibold' : 'text-gray-400'
+                            }`}>Alex</p>
+                          </div>
+                          <div className="text-center">
+                            <div className={`w-12 h-12 rounded-full mb-2 ${
+                              currentSpeaker === 'jordan' 
+                                ? 'bg-purple-500 animate-pulse' 
+                                : 'bg-gray-600'
+                            }`}></div>
+                            <p className={`text-sm ${
+                              currentSpeaker === 'jordan' ? 'text-purple-400 font-semibold' : 'text-gray-400'
+                            }`}>Jordan</p>
+                          </div>
+                        </div>
+                        {currentSpeaker && (
+                          <p className="text-sm text-gray-300">
+                            {currentSpeaker === 'alex' ? 'Alex' : 'Jordan'} is speaking...
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-gray-400">Click "Start Discussion" to begin the AI-powered conversation</p>
+                        <p className="text-gray-400">Or type a message below to join the conversation!</p>
+                        <p className="text-sm text-blue-400">Using: {currentProvider.getProviderName()}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {chatMessages.map((message) => (
+                      <div key={message.id} className="grid grid-cols-3 gap-4 items-start">
+                        {/* Alex Column */}
+                        <div className="flex justify-start">
+                          {message.speaker === 'alex' && (
+                            <div className="max-w-full px-4 py-3 rounded-lg bg-blue-600 text-white">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <div className="w-3 h-3 rounded-full bg-blue-300"></div>
+                                <span className="text-xs font-semibold">Alex</span>
+                                <span className="text-xs text-blue-200">
+                                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-sm leading-relaxed">{message.text}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* User Column */}
+                        <div className="flex justify-center">
+                          {message.speaker === 'user' && (
+                            <div className="max-w-full px-4 py-3 rounded-lg bg-green-600 text-white">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <div className="w-3 h-3 rounded-full bg-green-300"></div>
+                                <span className="text-xs font-semibold">{message.userName || 'You'}</span>
+                                <span className="text-xs text-green-200">
+                                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-sm leading-relaxed">{message.text}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Jordan Column */}
+                        <div className="flex justify-end">
+                          {message.speaker === 'jordan' && (
+                            <div className="max-w-full px-4 py-3 rounded-lg bg-purple-600 text-white">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <div className="w-3 h-3 rounded-full bg-purple-300"></div>
+                                <span className="text-xs font-semibold">Jordan</span>
+                                <span className="text-xs text-purple-200">
+                                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <p className="text-sm leading-relaxed">{message.text}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* User Input Text Box */}
+              {!showNamePrompt && (
+                <div className="border-t border-gray-700 pt-4">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+                      <span className="text-sm font-bold text-white">{userName.charAt(0).toUpperCase()}</span>
+                    </div>
+                    <span className="text-sm text-gray-300">Chatting as <strong>{userName}</strong></span>
+                  </div>
+                  <form onSubmit={handleUserInputSubmit} className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={userInput}
+                      onChange={(e) => setUserInput(e.target.value)}
+                      placeholder={`${userName}, share your thoughts on this topic...`}
+                      className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      disabled={isGenerating}
+                    />
+                    <button
+                      type="submit"
+                      disabled={!userInput.trim() || isGenerating}
+                      className={`px-4 py-3 rounded-lg transition-colors ${
+                        userInput.trim() && !isGenerating
+                          ? 'bg-green-600 hover:bg-green-700 text-white'
+                          : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      {isGenerating ? (
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      ) : (
+                        <PaperAirplaneIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                  </form>
+                  {isGenerating && (
+                    <div className="mt-2 text-sm text-yellow-400 flex items-center">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-400 mr-2"></div>
+                      AI moderator is preparing a response...
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default DiscussionPage;
