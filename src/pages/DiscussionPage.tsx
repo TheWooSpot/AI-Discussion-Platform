@@ -448,21 +448,32 @@ const DiscussionPage: React.FC = () => {
     };
     setChatMessages(prev => [...prev, userMessage]);
     
-    // Generate AI moderator response
+    // Pause any ongoing discussion to address user input
+    if (isPlaying) {
+      if (audioQueue[currentAudioIndex]?.type === 'webspeech') {
+        speechSynthesis.cancel();
+      } else if (audioQueue[currentAudioIndex]?.audio) {
+        audioQueue[currentAudioIndex].audio!.pause();
+      }
+      setIsPlaying(false);
+      setIsTimerActive(false);
+      setCurrentSpeaker(null);
+    }
+    
+    // Generate integrated discussion response that weaves in user comment
     try {
       setIsGenerating(true);
-      setDebugInfo('Generating moderator response to user...');
+      setDebugInfo('Integrating user comment into discussion...');
       
-      const moderator: 'alex' | 'jordan' = Math.random() > 0.5 ? 'alex' : 'jordan';
-      const prompt = `You are ${moderator === 'alex' ? 'Alex' : 'Jordan'}, an AI discussion moderator. A user named ${userName} just joined the conversation about "${discussion.title}" and said: "${message}"
+      // Generate a discussion segment that incorporates the user's comment
+      const prompt = `You are hosting a discussion about "${discussion.title}" with two AI moderators Alex and Jordan. A participant named ${userName} just contributed: "${message}"
       
-      Respond naturally as if you're acknowledging their comment and inviting them into the discussion. Keep it conversational, welcoming, and relevant to the topic. Your response should be 2-3 sentences that:
-      1. Acknowledge what they said
-      2. Welcome them by name to the discussion
-      3. Connect it back to the main discussion topic
-      4. Ask a follow-up question or invite them to elaborate
+      Create a natural discussion segment where BOTH Alex and Jordan acknowledge ${userName}'s comment, paraphrase their key points, and weave their perspective into the ongoing conversation about ${discussion.description}. This should redirect the discussion slightly based on ${userName}'s input.
       
-      Be warm and engaging, as if you're a real podcast host welcoming a caller. Start with something like "Thanks for joining us, ${userName}!" or "Great point, ${userName}!"`;
+      Format the response with clear speaker labels:
+      
+      Alex: [Alex acknowledges ${userName}'s comment, paraphrases their key point, and connects it to the main topic]
+      
       
       const response = await geminiService.generateContent(prompt);
       
