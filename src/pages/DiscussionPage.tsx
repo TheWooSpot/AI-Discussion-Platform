@@ -81,7 +81,6 @@ const DiscussionPage: React.FC = () => {
   const [userName, setUserName] = useState<string>('');
   const [showNamePrompt, setShowNamePrompt] = useState<boolean>(true);
   const [tempUserName, setTempUserName] = useState<string>('');
-  const [pendingUserComments, setPendingUserComments] = useState<Array<{message: string, timestamp: Date}>>([]);
   const [isProcessingUserComment, setIsProcessingUserComment] = useState<boolean>(false);
 
   const discussion = discussions.find(d => d.id === topicId) || discussions[0];
@@ -202,34 +201,41 @@ const DiscussionPage: React.FC = () => {
     }
   };
 
-  const addChatMessage = (speaker: 'alex' | 'jordan', text: string): void => {
+  const addChatMessageWithAnimation = (speaker: 'alex' | 'jordan', text: string): void => {
     const message: ChatMessage = {
       id: Date.now().toString(),
       speaker,
-      text,
+      text: '', // Start with empty text for animation
       timestamp: new Date()
     };
     setChatMessages(prev => [...prev, message]);
+    
+    // Animate text appearance to sync with voice
+    setTimeout(() => {
+      let currentIndex = 0;
+      const animateText = () => {
+        if (currentIndex <= text.length) {
+          setChatMessages(prev => 
+            prev.map(msg => 
+              msg.id === message.id 
+                ? { ...msg, text: text.substring(0, currentIndex) }
+                : msg
+            )
+          );
+          currentIndex++;
+          setTimeout(animateText, 30); // 30ms per character for natural pace
+        }
+      };
+      animateText();
+    }, 200); // 200ms delay to sync with voice start
   };
 
   const playNextAudio = async (): Promise<void> => {
     if (currentAudioIndex >= audioQueue.length) {
-      // Check if there are pending user comments to process
-      if (pendingUserComments.length > 0 && !isProcessingUserComment) {
-        setDebugInfo('Processing pending user comment...');
-        await processNextUserComment();
-        return;
-      }
-      
-      // If no pending comments, check if we should continue or end
-      if (audioQueue.length === 0 || currentAudioIndex === 0) {
-        setIsPlaying(false);
-        setIsTimerActive(false);
-        setCurrentSpeaker(null);
-        setDebugInfo('Discussion completed');
-      } else {
-        setDebugInfo('Segment completed, discussion continues...');
-      }
+      setIsPlaying(false);
+      setIsTimerActive(false);
+      setCurrentSpeaker(null);
+      setDebugInfo('Discussion segment completed');
       return;
     }
 
@@ -239,8 +245,8 @@ const DiscussionPage: React.FC = () => {
     setCurrentSpeaker(speaker);
     setDebugInfo(`Playing ${speaker} - segment ${currentAudioIndex + 1}/${audioQueue.length} (${providerType})`);
     
-    // Add message to chat
-    addChatMessage(speaker, audioItem.text);
+    // Add message to chat with animation
+    addChatMessageWithAnimation(speaker, audioItem.text);
     
     try {
       if (audioItem.type === 'webspeech' && audioItem.utterance) {
@@ -462,61 +468,59 @@ const DiscussionPage: React.FC = () => {
     };
     setChatMessages(prev => [...prev, userMessage]);
     
-    // Queue the user comment instead of interrupting
-    setPendingUserComments(prev => [...prev, { message, timestamp: new Date() }]);
-    setDebugInfo(`User comment queued. Will integrate after current speaker finishes.`);
-    
-    // If no discussion is currently playing, process immediately
-    if (!isPlaying && !isProcessingUserComment) {
-      await processNextUserComment();
+    // Immediately start processing the user comment
+    if (!isProcessingUserComment) {
+      await integrateUserCommentImmediately(message);
     }
   };
 
-  const processNextUserComment = async (): Promise<void> => {
-    if (pendingUserComments.length === 0 || isProcessingUserComment) {
+  const integrateUserCommentImmediately = async (userComment: string): Promise<void> => {
+    if (isProcessingUserComment) {
       return;
     }
 
-    const userComment = pendingUserComments[0];
-    setPendingUserComments(prev => prev.slice(1));
     setIsProcessingUserComment(true);
     
     try {
-      setDebugInfo('Integrating user comment into ongoing discussion...');
+      setDebugInfo(`Integrating ${userName}'s comment immediately...`);
       
-      // Generate response that naturally integrates the user comment
-      const prompt = `You are hosting a discussion about "${discussion.title}" - ${discussion.description}. 
+      // Determine which moderator should acknowledge first (current or next)
+      const currentModerator = currentSpeaker || 'alex';
+      const nextModerator = currentModerator === 'alex' ? 'jordan' : 'alex';
+      
+      const prompt = `You are hosting a discussion about "${discussion.title}" - ${discussion.description}.
 
-The discussion is flowing naturally when participant ${userName} contributes: "${userComment.message}"
+The discussion is in progress when participant ${userName} contributes: "${userComment}"
 
-Create a natural continuation where:
+Create an immediate, natural integration where:
 
-1. The CURRENT SPEAKER (either Alex or Jordan) smoothly acknowledges ${userName}'s comment and weaves it into their ongoing thoughts about "${discussion.title}"
+1. ${currentModerator.toUpperCase()}: Finishes their current thought, then smoothly acknowledges "${userName}, that's a great point about [paraphrase key aspect of their comment]" and diplomatically weaves 1-2 key notions from ${userName}'s input into their concluding remarks about "${discussion.title}"
 
-2. The OTHER MODERATOR then builds on both the original topic and ${userName}'s insight, keeping the discussion momentum going
+2. ${nextModerator.toUpperCase()}: Picks up immediately with direct reflection on ${userName}'s specific input, saying something like "${userName} raises an important perspective on [specific aspect]..." and then builds meaningfully on their insight
 
-3. Both moderators should treat ${userName}'s comment as a valuable addition that enriches the main discussion rather than a distraction
+3. Continue the discussion naturally, with ${userName}'s input now seamlessly woven into the conversation as an enhancement that offers more insightful value for both moderators to reflect upon
 
-4. The conversation should flow seamlessly and continue exploring "${discussion.title}" with ${userName}'s perspective now woven in
+4. The integration should feel immediate and natural - not queued or delayed, but as if ${userName} just contributed to a live conversation
 
 Format with clear speaker labels:
 
-Alex: [If Alex is responding: "That's a fascinating point, ${userName}. Your observation about [paraphrase their comment] really connects to what we're exploring with ${discussion.title}. It makes me think about..." - then continues the main discussion incorporating their insight]
+${currentModerator}: [Acknowledges ${userName} by name and integrates their key points into finishing thoughts]
 
-Jordan: [Jordan builds on Alex's integration and ${userName}'s point, advancing the discussion further while keeping focus on ${discussion.title}]
+${nextModerator}: [Direct reflection on ${userName}'s input and builds meaningfully on their perspective]
 
-Alex: [Alex continues the natural flow, ensuring the discussion keeps moving forward]
+${currentModerator}: [Continues the enhanced discussion incorporating ${userName}'s valuable insights]
 
-Keep the energy flowing and make ${userName} feel heard while maintaining focus on "${discussion.title}".`;
+Make ${userName} feel immediately heard and valued while keeping the discussion momentum strong.`;
       
       const response = await geminiService.generateContent(prompt);
       const segments = parseDiscussion(response);
       
-      // Ensure we have segments for continued discussion
-      if (segments.length < 2) {
+      // Ensure we have at least 3 segments for proper integration
+      if (segments.length < 3) {
         segments.push(
-          { speaker: 'alex', text: `Thank you for that insight, ${userName}. Your perspective on ${userComment.message} really adds depth to our discussion about ${discussion.title}. This connects beautifully to what we're exploring...` },
-          { speaker: 'jordan', text: `I completely agree, Alex. ${userName}'s observation helps us see ${discussion.title} from a fresh angle. Building on that thought, I think we can explore how this relates to ${discussion.description}...` }
+          { speaker: currentModerator, text: `${userName}, that's a valuable perspective. Your point about the key aspects of ${userComment} really enhances our exploration of ${discussion.title}...` },
+          { speaker: nextModerator, text: `${userName} raises an excellent point. Building on what they've shared, I think this opens up new dimensions in our discussion of ${discussion.description}...` },
+          { speaker: currentModerator, text: `Exactly, and with ${userName}'s insight, we can see how this connects to the broader implications of ${discussion.title}...` }
         );
       }
       
@@ -535,21 +539,26 @@ Keep the energy flowing and make ${userName} feel heard while maintaining focus 
       }
       
       // Add to audio queue
-      setAudioQueue(prev => [...prev, ...newAudioItems]);
-      
-      // Continue or start playing
-      if (!isPlaying) {
+      if (isPlaying) {
+        // Insert after current segment
+        setAudioQueue(prev => {
+          const beforeCurrent = prev.slice(0, currentAudioIndex + 1);
+          const afterCurrent = prev.slice(currentAudioIndex + 1);
+          return [...beforeCurrent, ...newAudioItems, ...afterCurrent];
+        });
+      } else {
+        // Add to queue and start playing
+        setAudioQueue(prev => [...prev, ...newAudioItems]);
         setIsPlaying(true);
         setIsTimerActive(true);
-        setCurrentAudioIndex(audioQueue.length);
       }
       
-      setDebugInfo(`User comment integrated naturally. Discussion continues with ${segments.length} segments.`);
+      setDebugInfo(`${userName}'s comment integrated immediately with ${segments.length} response segments.`);
       
     } catch (error) {
-      console.error('Failed to process user comment:', error);
+      console.error('Failed to integrate user comment:', error);
       setError('Failed to process your comment');
-      setDebugInfo('Error processing user comment');
+      setDebugInfo('Error integrating user comment');
     } finally {
       setIsProcessingUserComment(false);
     }
@@ -607,7 +616,6 @@ Keep the energy flowing and make ${userName} feel heard while maintaining focus 
                   <div>Current Speaker: {currentSpeaker || 'None'}</div>
                   <div>Audio Queue: {audioQueue.length} segments</div>
                   <div>Current Segment: {currentAudioIndex + 1}/{audioQueue.length}</div>
-                  <div>Pending Comments: {pendingUserComments.length}</div>
                   <div>Processing Comment: {isProcessingUserComment ? 'Yes' : 'No'}</div>
                 </div>
               </div>
@@ -857,13 +865,7 @@ Keep the energy flowing and make ${userName} feel heard while maintaining focus 
                   {(isGenerating || isProcessingUserComment) && (
                     <div className="mt-2 text-sm text-yellow-400 flex items-center">
                       <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-400 mr-2"></div>
-                      {isProcessingUserComment ? 'Integrating your comment into the discussion...' : 'AI moderator is preparing a response...'}
-                    </div>
-                  )}
-                  {pendingUserComments.length > 0 && (
-                    <div className="mt-2 text-sm text-blue-400 flex items-center">
-                      <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse mr-2"></div>
-                      {pendingUserComments.length} comment{pendingUserComments.length > 1 ? 's' : ''} queued for integration
+                      {isProcessingUserComment ? `Integrating ${userName}'s comment immediately...` : 'AI moderator is preparing a response...'}
                     </div>
                   )}
                 </div>
