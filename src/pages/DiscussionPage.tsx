@@ -474,25 +474,33 @@ const DiscussionPage: React.FC = () => {
       
       Alex: [Alex acknowledges ${userName}'s comment, paraphrases their key point, and connects it to the main topic]
       
-      Jordan: [Jordan builds on Alex's response and ${userName}'s input, adding their own perspective and asking a follow-up question]`;
+      Jordan: [Jordan's response that builds on both ${userName}'s comment and Alex's points, perhaps offering a different perspective or additional insights]`;
       
       const response = await geminiService.generateContent(prompt);
       
-      // Parse the response to get both moderator segments
+      // Parse the response to get both Alex and Jordan segments
       const segments = parseDiscussion(response);
       
-      // Generate and play voice responses for both moderators
-      if (currentProvider && !isPlaying) {
+      // Add all moderator responses to chat with animation
+      for (const segment of segments) {
+        const message: ChatMessage = {
+          id: (Date.now() + Math.random()).toString(),
+          speaker: segment.speaker,
+          text: segment.text,
+          timestamp: new Date(),
+          isAnimating: true
+        };
+        setChatMessages(prev => [...prev, message]);
+      }
+      
+      // Generate and play voice responses for each segment
+      if (currentProvider && segments.length > 0) {
         try {
-          setDebugInfo('Generating voice responses from both moderators...');
+          setDebugInfo(`Generating voice responses from moderators...`);
           
-          if (providerType === 'webspeech') {
-            // Create utterances for both moderators
-            for (const segment of segments) {
+          for (const segment of segments) {
+            if (providerType === 'webspeech') {
               const utterance = createWebSpeechUtterance(segment.text, segment.speaker);
-              
-              // Add message to chat first
-              addChatMessage(segment.speaker, segment.text);
               
               utterance.onstart = () => {
                 setCurrentSpeaker(segment.speaker);
@@ -512,24 +520,10 @@ const DiscussionPage: React.FC = () => {
               
               speechSynthesis.cancel();
               speechSynthesis.speak(utterance);
-              
-              // Wait for this utterance to complete before starting the next
-              await new Promise<void>((resolve) => {
-                utterance.onend = () => {
-                  setCurrentSpeaker(null);
-                  resolve();
-                };
-              });
-            }
-          } else {
-            // Generate audio for both moderators
-            for (const segment of segments) {
+            } else {
               const audioBlob = await currentProvider.generateSpeech(segment.text, segment.speaker);
               const audioUrl = URL.createObjectURL(audioBlob);
               const audio = new Audio(audioUrl);
-              
-              // Add message to chat first
-              addChatMessage(segment.speaker, segment.text);
               
               audio.onplay = () => {
                 setCurrentSpeaker(segment.speaker);
@@ -547,14 +541,6 @@ const DiscussionPage: React.FC = () => {
               };
               
               await audio.play();
-              
-              // Wait for this audio to complete before starting the next
-              await new Promise<void>((resolve) => {
-                audio.onended = () => {
-                  setCurrentSpeaker(null);
-                  resolve();
-                };
-              });
             }
           }
         } catch (voiceError) {
