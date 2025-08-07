@@ -6,11 +6,13 @@ interface ElevenLabsConfig {
 interface VoiceConfig {
   id: string;
   name: string;
+  description: string;
 }
 
 class ElevenLabsService {
   private config: ElevenLabsConfig;
-  private voices: { [key: string]: VoiceConfig };
+  private availableVoices: VoiceConfig[];
+  private selectedVoices: { [key: string]: VoiceConfig };
 
   constructor() {
     this.config = {
@@ -18,15 +20,43 @@ class ElevenLabsService {
       baseUrl: 'https://api.elevenlabs.io/v1'
     };
 
-    // Different voice IDs for our moderators
-    this.voices = {
-      alex: { id: 'pNInz6obpgDQGcFmaJgB', name: 'Alex' }, // Adam voice
-      jordan: { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Jordan' } // Bella voice
+    // Available ElevenLabs voices
+    this.availableVoices = [
+      { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', description: 'Deep, authoritative male voice' },
+      { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', description: 'Warm, engaging female voice' },
+      { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', description: 'Strong, confident male voice' },
+      { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', description: 'Smooth, professional male voice' },
+      { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', description: 'Clear, articulate female voice' },
+      { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', description: 'Friendly, conversational male voice' },
+      { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi', description: 'Energetic, youthful female voice' },
+      { id: 'CYw3kZ02Hs0563khs1Fj', name: 'Dave', description: 'Calm, measured male voice' }
+    ];
+
+    // Default voice selections
+    this.selectedVoices = {
+      alex: this.availableVoices[0], // Adam by default
+      jordan: this.availableVoices[1] // Bella by default
     };
   }
 
+  getAvailableVoices(): VoiceConfig[] {
+    return this.availableVoices;
+  }
+
+  getSelectedVoices(): { [key: string]: VoiceConfig } {
+    return this.selectedVoices;
+  }
+
+  setVoiceForSpeaker(speaker: 'alex' | 'jordan', voiceId: string): void {
+    const voice = this.availableVoices.find(v => v.id === voiceId);
+    if (voice) {
+      this.selectedVoices[speaker] = voice;
+      console.log(`🎤 Set ${speaker} voice to: ${voice.name} (${voice.description})`);
+    }
+  }
+
   async generateSpeech(text: string, speaker: 'alex' | 'jordan' = 'alex'): Promise<Blob> {
-    const voiceConfig = this.voices[speaker];
+    const voiceConfig = this.selectedVoices[speaker];
     
     try {
       const response = await fetch(`${this.config.baseUrl}/text-to-speech/${voiceConfig.id}`, {

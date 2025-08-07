@@ -15,7 +15,8 @@ class ElevenLabsProvider implements VoiceProvider {
   }
 
   getProviderName(): string {
-    return 'ElevenLabs (Adam / Bella)';
+    const selectedVoices = elevenLabsService.getSelectedVoices();
+    return `ElevenLabs (${selectedVoices.alex.name} / ${selectedVoices.jordan.name})`;
   }
 }
 

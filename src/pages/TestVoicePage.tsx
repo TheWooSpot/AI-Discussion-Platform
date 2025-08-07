@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PlayIcon, PauseIcon, SpeakerWaveIcon } from '@heroicons/react/24/solid';
 import { useVoiceProvider } from '../hooks/useVoiceProvider';
+import { elevenLabsService } from '../services/elevenlabs';
 
 const TestVoicePage: React.FC = () => {
   const { currentProvider, providerType } = useVoiceProvider();
@@ -168,7 +169,9 @@ const TestVoicePage: React.FC = () => {
   // Get provider-specific voice descriptions
   const getVoiceDescription = (speaker: 'alex' | 'jordan') => {
     if (providerType === 'elevenlabs') {
-      return speaker === 'alex' ? 'ElevenLabs Adam Voice' : 'ElevenLabs Bella Voice';
+      const selectedVoices = elevenLabsService.getSelectedVoices();
+      const voice = selectedVoices[speaker];
+      return `ElevenLabs ${voice.name} - ${voice.description}`;
     } else {
       return speaker === 'alex' ? 'Microsoft David (Male)' : 'Microsoft Zira (Female)';
     }
@@ -321,6 +324,15 @@ const TestVoicePage: React.FC = () => {
           <div className="space-y-2 text-sm text-gray-300">
             <p><strong>Current Provider:</strong> {currentProvider.getProviderName()}</p>
             <p><strong>Provider Type:</strong> {providerType}</p>
+            {providerType === 'elevenlabs' && (
+              <div>
+                <p><strong>Selected Voices:</strong></p>
+                <div className="ml-4 text-xs">
+                  <p>Alex: {elevenLabsService.getSelectedVoices().alex.name}</p>
+                  <p>Jordan: {elevenLabsService.getSelectedVoices().jordan.name}</p>
+                </div>
+              </div>
+            )}
             <p><strong>Web Speech Available:</strong> {'speechSynthesis' in window ? '✅ Yes' : '❌ No'}</p>
             <p><strong>Available Voices:</strong> {speechSynthesis.getVoices().length} system voices detected</p>
           </div>
