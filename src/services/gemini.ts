@@ -1,5 +1,10 @@
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 
+interface RetryOptions {
+  maxRetries: number;
+  baseDelay: number;
+}
+
 class GeminiService {
   private genAI: GoogleGenerativeAI;
   private model: GenerativeModel;
@@ -17,15 +22,55 @@ class GeminiService {
     this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
   }
 
-  async generateContent(prompt: string): Promise<string> {
-    try {
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
-    } catch (error) {
-      console.error('Error generating content:', error);
-      throw error;
+  private async delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private async retryWithBackoff<T>(
+    operation: () => Promise<T>,
+    options: RetryOptions = { maxRetries: 3, baseDelay: 1000 }
+  ): Promise<T> {
+    let lastError: Error;
+    
+    for (let attempt = 0; attempt <= options.maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+        
+        // Check if it's a retryable error (503 overloaded or network issues)
+        const isRetryable = error instanceof Error && (
+          error.message.includes('503') ||
+          error.message.includes('overloaded') ||
+          error.message.includes('network') ||
+          error.message.includes('timeout')
+        );
+        
+        if (!isRetryable || attempt === options.maxRetries) {
+          throw error;
+        }
+        
+        // Exponential backoff: baseDelay * 2^attempt
+        const delayMs = options.baseDelay * Math.pow(2, attempt);
+        console.log(`Gemini API attempt ${attempt + 1} failed, retrying in ${delayMs}ms...`);
+        await this.delay(delayMs);
+      }
     }
+    
+    throw lastError!;
+  }
+
+  async generateContent(prompt: string): Promise<string> {
+    return this.retryWithBackoff(async () => {
+      try {
+        const result = await this.model.generateContent(prompt);
+        const response = await result.response;
+        return response.text();
+      } catch (error) {
+        console.error('Error generating content:', error);
+        throw error;
+      }
+    });
   }
 
   async generateDiscussion(topic: string, description: string): Promise<string> {
