@@ -142,15 +142,27 @@ class GeminiVoiceService implements VoiceProvider {
 
   async testConnection(): Promise<boolean> {
     if (!this.apiKey) {
+      console.log('❌ Gemini API key not configured');
       return false;
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/voices?key=${this.apiKey}`, {
+      // Test with a simple synthesis request instead of voices endpoint
+      const testRequest = {
+        input: { text: "test" },
+        voice: { languageCode: "en-US", name: "en-US-Standard-A" },
+        audioConfig: { audioEncoding: "MP3" }
+      };
+      
+      const response = await fetch(`${this.baseUrl}/text:synthesize?key=${this.apiKey}`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify(testRequest)
       });
+      
+      console.log('🔍 Gemini TTS test response:', response.status);
       return response.ok;
     } catch (error) {
       console.error('Gemini TTS connection test failed:', error);

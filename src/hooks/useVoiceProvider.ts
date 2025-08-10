@@ -83,9 +83,12 @@ export const useVoiceProvider = (): VoiceProviderHook => {
       setIsGeminiAvailable(geminiTest);
 
       // Fallback logic: Gemini -> OpenAI -> ElevenLabs -> Web Speech
-      if (!elevenLabsTest && !openaiTest && !geminiTest && webSpeechTest) {
+      if (!geminiTest && !elevenLabsTest && !openaiTest && webSpeechTest) {
         console.log('🔄 Falling back to Web Speech API');
         setProviderType('webspeech');
+      } else if (geminiTest && !elevenLabsTest && !openaiTest) {
+        console.log('🔄 Using Gemini TTS as primary provider');
+        setProviderType('gemini');
       }
     };
 
