@@ -11,10 +11,11 @@ export default function VoiceProviderToggle() {
     providerType, 
     setProviderType, 
     isWebSpeechAvailable, 
-    isElevenLabsAvailable 
+    isElevenLabsAvailable,
+    isOpenAIAvailable
   } = useVoiceProvider();
 
-  const handleProviderChange = (newProvider: 'elevenlabs' | 'webspeech') => {
+  const handleProviderChange = (newProvider: 'elevenlabs' | 'webspeech' | 'openai') => {
     console.log(`🔄 Switching voice provider from ${providerType} to ${newProvider}`);
     setProviderType(newProvider);
     setIsOpen(false);
@@ -88,6 +89,35 @@ export default function VoiceProviderToggle() {
                 </button>
               </div>
 
+              {/* OpenAI Option */}
+              <button
+                onClick={() => handleProviderChange('openai')}
+                disabled={!isOpenAIAvailable}
+                className={`w-full text-left p-2 rounded text-sm transition-colors ${
+                  providerType === 'openai'
+                    ? 'bg-blue-600 text-white'
+                    : isOpenAIAvailable
+                      ? 'text-gray-300 hover:bg-gray-700'
+                      : 'text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">OpenAI TTS</div>
+                    <div className="text-xs opacity-75">High-quality AI voices</div>
+                  </div>
+                  <div className="text-xs">
+                    {providerType === 'openai' && isOpenAIAvailable ? (
+                      <span className="text-green-400">✓</span>
+                    ) : isOpenAIAvailable ? (
+                      <span className="text-gray-400">○</span>
+                    ) : (
+                      <span className="text-red-400">✗</span>
+                    )}
+                  </div>
+                </div>
+              </button>
+
               {/* Web Speech Option */}
               <button
                 onClick={() => handleProviderChange('webspeech')}
@@ -121,7 +151,11 @@ export default function VoiceProviderToggle() {
             {/* Current Provider Info */}
             <div className="mt-3 pt-3 border-t border-gray-700">
               <div className="text-xs text-gray-400">
-                <div>Selected: {providerType === 'elevenlabs' ? 'ElevenLabs' : 'Web Speech API'}</div>
+                <div>Selected: {
+                  providerType === 'elevenlabs' ? 'ElevenLabs' : 
+                  providerType === 'openai' ? 'OpenAI TTS' : 
+                  'Web Speech API'
+                }</div>
               </div>
             </div>
           </div>

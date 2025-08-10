@@ -9,3 +9,8 @@ export interface VoiceProvider {
   testConnection(): Promise<boolean>;
   getProviderName(): string;
 }
+
+export interface OpenAIVoiceConfig {
+  model: 'tts-1' | 'tts-1-hd';
+  voice: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+}

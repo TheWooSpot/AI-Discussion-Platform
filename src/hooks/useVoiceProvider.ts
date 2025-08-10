@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { VoiceProvider } from '../types/voice';
 import { elevenLabsProvider } from '../services/elevenLabsProvider';
 import { webSpeechProvider } from '../services/webSpeechProvider';
+import { openaiProvider } from '../services/openaiProvider';
 
-type VoiceProviderType = 'elevenlabs' | 'webspeech';
+type VoiceProviderType = 'elevenlabs' | 'webspeech' | 'openai';
 
 interface VoiceProviderHook {
   currentProvider: VoiceProvider;
@@ -11,6 +12,7 @@ interface VoiceProviderHook {
   setProviderType: (type: VoiceProviderType) => void;
   isWebSpeechAvailable: boolean;
   isElevenLabsAvailable: boolean;
+  isOpenAIAvailable: boolean;
 }
 
 // Create a global state for voice provider
@@ -26,6 +28,7 @@ export const useVoiceProvider = (): VoiceProviderHook => {
   const [providerType, setProviderTypeState] = useState<VoiceProviderType>(globalProviderType);
   const [isWebSpeechAvailable, setIsWebSpeechAvailable] = useState(false);
   const [isElevenLabsAvailable, setIsElevenLabsAvailable] = useState(false);
+  const [isOpenAIAvailable, setIsOpenAIAvailable] = useState(false);
   const [, forceUpdate] = useState({});
 
   // Set up global state management
@@ -61,17 +64,20 @@ export const useVoiceProvider = (): VoiceProviderHook => {
       
       const webSpeechTest = await webSpeechProvider.testConnection();
       const elevenLabsTest = await elevenLabsProvider.testConnection();
+      const openaiTest = await openaiProvider.testConnection();
       
       console.log('🔍 Provider test results:', {
         webSpeech: webSpeechTest,
-        elevenLabs: elevenLabsTest
+        elevenLabs: elevenLabsTest,
+        openai: openaiTest
       });
       
       setIsWebSpeechAvailable(webSpeechTest);
       setIsElevenLabsAvailable(elevenLabsTest);
+      setIsOpenAIAvailable(openaiTest);
 
-      // If ElevenLabs is not available, fallback to Web Speech
-      if (!elevenLabsTest && webSpeechTest) {
+      // Fallback logic: OpenAI -> ElevenLabs -> Web Speech
+      if (!elevenLabsTest && !openaiTest && webSpeechTest) {
         console.log('🔄 Falling back to Web Speech API');
         setProviderType('webspeech');
       }
@@ -87,7 +93,15 @@ export const useVoiceProvider = (): VoiceProviderHook => {
   }, [providerType]);
 
   const getCurrentProvider = (): VoiceProvider => {
-    return providerType === 'elevenlabs' ? elevenLabsProvider : webSpeechProvider;
+    switch (providerType) {
+      case 'elevenlabs':
+        return elevenLabsProvider;
+      case 'openai':
+        return openaiProvider;
+      case 'webspeech':
+      default:
+        return webSpeechProvider;
+    }
   };
 
   const currentProvider = getCurrentProvider();
@@ -97,6 +111,7 @@ export const useVoiceProvider = (): VoiceProviderHook => {
     providerType,
     setProviderType,
     isWebSpeechAvailable,
-    isElevenLabsAvailable
+    isElevenLabsAvailable,
+    isOpenAIAvailable
   };
 };
