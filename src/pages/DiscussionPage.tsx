@@ -543,201 +543,89 @@ This should be about 3-4 minutes of initial moderator dialogue before users join
       }
     }, 100);
     
-    // Handle user comment based on current state
+    // Always queue user comments to be processed after current speaker finishes
     if (!isProcessingUserComment) {
+      await queueUserCommentForProcessing(message);
+    }
+  };
+
+  const queueUserCommentForProcessing = async (userComment: string): Promise<void> => {
+    if (isProcessingUserComment) {
+      return;
+    }
+
+    setIsProcessingUserComment(true);
+    
+    try {
       if (isPlaying && currentSpeaker) {
-        // Queue comment for acknowledgment at next natural break
-        await queueCommentForAcknowledgment(message);
+        // A moderator is currently speaking - wait for them to finish
+        setDebugInfo(`${userName}'s comment queued - waiting for ${currentSpeaker} to finish speaking...`);
+        
+        // Set up a listener to process the comment when the current audio segment ends
+        const processAfterCurrentSegment = () => {
+          // Wait a brief moment to ensure the current segment has fully ended
+          setTimeout(() => {
+            if (!isProcessingUserComment) {
+              processUserCommentAfterSpeaking(userComment);
+            }
+          }, 500);
+        };
+        
+        // Monitor for when the current audio segment ends
+        const checkForSegmentEnd = () => {
+          if (currentAudioIndex !== audioQueue.length - 1) {
+            // More segments to play, wait for natural break
+            setTimeout(checkForSegmentEnd, 1000);
+          } else {
+            // This is the last segment or we've moved to next segment
+            processAfterCurrentSegment();
+          }
+        };
+        
+        checkForSegmentEnd();
+        
       } else {
-        // No one speaking, integrate comment normally
-        await integrateUserCommentImmediately(message);
+        // No one is speaking, process immediately
+        await processUserCommentAfterSpeaking(userComment);
       }
-    }
-  };
-
-  const queueCommentForAcknowledgment = async (userComment: string): Promise<void> => {
-    if (isProcessingUserComment) {
-      return;
-    }
-
-    setIsProcessingUserComment(true);
-    
-    try {
-      setDebugInfo(`Queuing ${userName}'s comment for natural break acknowledgment...`);
-      
-      const currentModerator = currentSpeaker!;
-      
-      // Generate acknowledgment that continues the current thought
-      const acknowledgmentPrompt = `You are ${currentModerator} facilitating a discussion about "${discussion.title}". 
-
-You are in the middle of sharing your thoughts when participant ${userName} contributes: "${userComment}"
-
-At the next natural break in your commentary, provide a BRIEF acknowledgment that:
-- Thanks ${userName} by name
-- Acknowledges you saw their comment
-- Mentions it will be addressed shortly
-- Then CONTINUES with your original line of thinking using phrases like "Now, continuing with what I was saying..." or "But let me complete this thought first..."
-
-Examples:
-"Thanks ${userName}, I see your comment and we'll address that in just a moment. Now, continuing with what I was saying about [current topic]..."
-"${userName}, appreciate your input - we'll get to that shortly. But let me complete this thought about [current topic]..."
-"I notice ${userName}'s comment there - we'll weave that in soon. For now, let me finish explaining [current topic]..."
-
-Keep it brief but natural, acknowledging the user while seamlessly continuing your original commentary.
-
-${currentModerator.charAt(0).toUpperCase() + currentModerator.slice(1)}: [Brief acknowledgment + transition back to current topic]`;
-      
-      const response = await geminiService.generateContent(acknowledgmentPrompt);
-      const cleanResponse = response.replace(/^(Alex|Jordan):\s*/i, '').trim();
-      
-      // Generate audio for the acknowledgment + continuation
-      let audioItem: AudioItem;
-      
-      if (providerType === 'webspeech') {
-        audioItem = await createAudioItem(new Blob(), currentModerator, cleanResponse);
-      } else {
-        const audioBlob = await currentProvider.generateSpeech(cleanResponse, currentModerator);
-        audioItem = await createAudioItem(audioBlob, currentModerator, cleanResponse);
-      }
-      
-      // Insert the acknowledgment + continuation right after the current segment
-      setAudioQueue(prev => {
-        const beforeCurrent = prev.slice(0, currentAudioIndex + 1);
-        const afterCurrent = prev.slice(currentAudioIndex + 1);
-        return [...beforeCurrent, audioItem, ...afterCurrent];
-      });
-      
-      setDebugInfo(`${userName} acknowledged by ${currentModerator}, continuing original thought`);
-      
-      // Schedule the strategic integration for after the moderator completes their thought
-      setTimeout(() => {
-        if (!isProcessingUserComment) {
-          strategicallyIntegrateUserComment(userComment);
-        }
-      }, 8000); // Wait 8 seconds to allow moderator to complete their thought
       
     } catch (error) {
-      console.error('Failed to generate acknowledgment:', error);
-      setError('Failed to acknowledge your comment');
-      setDebugInfo('Error with comment acknowledgment');
-    } finally {
+      console.error('Failed to queue user comment:', error);
+      setError('Failed to process your comment');
+      setDebugInfo('Error queuing user comment');
       setIsProcessingUserComment(false);
     }
   };
 
-  const strategicallyIntegrateUserComment = async (userComment: string): Promise<void> => {
-    if (isProcessingUserComment) {
-      return;
-    }
-
-    setIsProcessingUserComment(true);
-    
+  const processUserCommentAfterSpeaking = async (userComment: string): Promise<void> => {
     try {
-      setDebugInfo(`Strategically weaving ${userName}'s comment into discussion...`);
+      setDebugInfo(`Processing ${userName}'s comment after moderator finished speaking...`);
       
-      // Either moderator can lead the strategic integration
-      const leadModerator = Math.random() > 0.5 ? 'alex' : 'jordan';
-      const otherModerator = leadModerator === 'alex' ? 'jordan' : 'alex';
-      
-      const strategicPrompt = `You are facilitating an ongoing discussion about "${discussion.title}" - ${discussion.description}.
-
-Earlier, ${userName} contributed this valuable comment: "${userComment}"
-
-The other moderator briefly acknowledged ${userName} to be polite, but now it's time to strategically weave their input into the natural flow of the discussion.
-
-Create a strategic integration where both moderators naturally incorporate ${userName}'s perspective:
-
-1. ${leadModerator.toUpperCase()}: Naturally transitions to ${userName}'s comment with something like "You know, ${userName} raised an interesting point earlier about [specific aspect]..." Then genuinely engages with their input and connects it to the ongoing discussion - 2-3 sentences.
-
-2. ${otherModerator.toUpperCase()}: Builds meaningfully on ${userName}'s contribution, showing how their perspective adds depth or offers a different angle to the discussion - 2-3 sentences.
-
-3. ${leadModerator.toUpperCase()}: Continues the facilitative discussion, with ${userName}'s insights now naturally woven into the broader conversation - 2-3 sentences.
-
-Make this feel like professional moderators who strategically time when to address participant input for maximum impact and natural flow.
-
-Format with clear speaker labels:
-
-${leadModerator.charAt(0).toUpperCase() + leadModerator.slice(1)}: [Natural transition to ${userName}'s comment and strategic engagement - 2-3 sentences]
-
-${otherModerator.charAt(0).toUpperCase() + otherModerator.slice(1)}: [Build strategically on ${userName}'s contribution - 2-3 sentences]
-
-${leadModerator.charAt(0).toUpperCase() + leadModerator.slice(1)}: [Continue discussion with ${userName}'s perspective naturally integrated - 2-3 sentences]`;
-      
-      const response = await geminiService.generateContent(strategicPrompt);
-      const segments = parseDiscussion(response);
-      
-      // Generate audio for the strategic integration
-      const newAudioItems: AudioItem[] = [];
-      
-      for (const segment of segments) {
-        if (providerType === 'webspeech') {
-          const audioItem = await createAudioItem(new Blob(), segment.speaker, segment.text);
-          newAudioItems.push(audioItem);
-        } else {
-          const audioBlob = await currentProvider.generateSpeech(segment.text, segment.speaker);
-          const audioItem = await createAudioItem(audioBlob, segment.speaker, segment.text);
-          newAudioItems.push(audioItem);
-        }
-      }
-      
-      // Add to audio queue
-      if (isPlaying) {
-        setAudioQueue(prev => {
-          const beforeCurrent = prev.slice(0, currentAudioIndex + 1);
-          const afterCurrent = prev.slice(currentAudioIndex + 1);
-          return [...beforeCurrent, ...newAudioItems, ...afterCurrent];
-        });
-      } else {
-        setAudioQueue(prev => [...prev, ...newAudioItems]);
-        setIsPlaying(true);
-        setIsTimerActive(true);
-      }
-      
-      setDebugInfo(`${userName}'s comment strategically woven into discussion with ${segments.length} segments.`);
-      
-    } catch (error) {
-      console.error('Failed to strategically integrate user comment:', error);
-      setError('Failed to weave your comment into discussion');
-      setDebugInfo('Error with strategic integration');
-    } finally {
-      setIsProcessingUserComment(false);
-    }
-  };
-  const integrateUserCommentImmediately = async (userComment: string): Promise<void> => {
-    if (isProcessingUserComment) {
-      return;
-    }
-
-    setIsProcessingUserComment(true);
-    
-    try {
-      setDebugInfo(`Integrating ${userName}'s comment immediately...`);
-      
-      // Determine which moderator should acknowledge first (current or next)
-      const currentModerator = currentSpeaker || 'alex';
-      const nextModerator = currentModerator === 'alex' ? 'jordan' : 'alex';
+      // Determine which moderator should respond (alternate or choose randomly)
+      const respondingModerator = Math.random() > 0.5 ? 'alex' : 'jordan';
+      const otherModerator = respondingModerator === 'alex' ? 'jordan' : 'alex';
       
       const prompt = `You are facilitating an ongoing discussion about "${discussion.title}" - ${discussion.description}.
 
-The discussion between Alex and Jordan is flowing naturally when participant ${userName} contributes this insightful comment: "${userComment}"
+The discussion between Alex and Jordan has just reached a natural pause when participant ${userName} contributes this insightful comment: "${userComment}"
 
-Create a natural, facilitative integration where both moderators acknowledge and build upon ${userName}'s contribution:
+Since no moderator is currently speaking, create a natural, facilitative response where both moderators acknowledge and build upon ${userName}'s contribution:
 
-1. ${currentModerator.toUpperCase()}: Acknowledges ${userName} by name and identifies the key insights in their comment: "${userName}, that's an excellent point about [specific aspect from their comment]." Then diplomatically weaves 1-2 key notions from ${userName}'s input into their response, connecting it back to the main topic.
+1. ${respondingModerator.toUpperCase()}: Acknowledges ${userName} by name and identifies the key insights in their comment: "${userName}, that's an excellent point about [specific aspect from their comment]." Then diplomatically weaves 1-2 key notions from ${userName}'s input into their response, connecting it back to the main topic - 2-3 sentences.
 
-2. ${nextModerator.toUpperCase()}: Builds directly on ${userName}'s contribution with something like "${userName} raises a crucial point about [specific aspect from their comment]..." and then expands meaningfully on their insight, showing how it enhances the discussion.
+2. ${otherModerator.toUpperCase()}: Builds directly on ${userName}'s contribution with something like "${userName} raises a crucial point about [specific aspect from their comment]..." and then expands meaningfully on their insight, showing how it enhances the discussion - 2-3 sentences.
 
-3. ${currentModerator.toUpperCase()}: Continues the facilitative discussion, incorporating ${userName}'s perspective as a valuable addition that deepens the conversation about "${discussion.title}".
+3. ${respondingModerator.toUpperCase()}: Continues the facilitative discussion, incorporating ${userName}'s perspective as a valuable addition that deepens the conversation about "${discussion.title}" - 2-3 sentences.
 
-The integration should feel like professional moderators acknowledging a valuable participant contribution in a live discussion.
+The response should feel like professional moderators acknowledging a valuable participant contribution after a natural pause in the discussion.
 
 Format with clear speaker labels:
 
-${currentModerator.charAt(0).toUpperCase() + currentModerator.slice(1)}: [Acknowledges ${userName} by name, identifies key insights from their comment, and weaves their input into the discussion - 2-3 sentences]
+${respondingModerator.charAt(0).toUpperCase() + respondingModerator.slice(1)}: [Acknowledges ${userName} by name, identifies key insights from their comment, and weaves their input into the discussion - 2-3 sentences]
 
-${nextModerator.charAt(0).toUpperCase() + nextModerator.slice(1)}: [Builds directly on ${userName}'s specific contribution and expands on their insights - 2-3 sentences]
+${otherModerator.charAt(0).toUpperCase() + otherModerator.slice(1)}: [Builds directly on ${userName}'s specific contribution and expands on their insights - 2-3 sentences]
 
-${currentModerator.charAt(0).toUpperCase() + currentModerator.slice(1)}: [Continues the facilitative discussion with ${userName}'s perspective now woven in - 2-3 sentences]
+${respondingModerator.charAt(0).toUpperCase() + respondingModerator.slice(1)}: [Continues the facilitative discussion with ${userName}'s perspective now woven in - 2-3 sentences]
 
 Make ${userName} feel genuinely heard and valued as a contributor to this facilitative discussion.`;
       
@@ -747,9 +635,9 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
       // Ensure we have at least 3 segments for proper integration
       if (segments.length < 3) {
         segments.push(
-          { speaker: currentModerator, text: `${userName}, that's a valuable perspective. Your insights about ${userComment.substring(0, 50)}... really enhance our exploration of ${discussion.title}.` },
-          { speaker: nextModerator, text: `${userName} raises an excellent point. Building on what they've shared, this opens up new dimensions in our discussion.` },
-          { speaker: currentModerator, text: `Exactly, and with ${userName}'s contribution, we can see how this connects to the broader implications we're exploring.` }
+          { speaker: respondingModerator, text: `${userName}, that's a valuable perspective. Your insights about ${userComment.substring(0, 50)}... really enhance our exploration of ${discussion.title}.` },
+          { speaker: otherModerator, text: `${userName} raises an excellent point. Building on what they've shared, this opens up new dimensions in our discussion.` },
+          { speaker: respondingModerator, text: `Exactly, and with ${userName}'s contribution, we can see how this connects to the broader implications we're exploring.` }
         );
       }
       
@@ -769,11 +657,9 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
       
       // Add to audio queue
       if (isPlaying) {
-        // Insert after current segment
+        // Add to the end of the queue
         setAudioQueue(prev => {
-          const beforeCurrent = prev.slice(0, currentAudioIndex + 1);
-          const afterCurrent = prev.slice(currentAudioIndex + 1);
-          return [...beforeCurrent, ...newAudioItems, ...afterCurrent];
+          return [...prev, ...newAudioItems];
         });
       } else {
         // Add to queue and start playing
@@ -782,12 +668,12 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
         setIsTimerActive(true);
       }
       
-      setDebugInfo(`${userName}'s comment acknowledged by both moderators with ${segments.length} response segments.`);
+      setDebugInfo(`${userName}'s comment processed with ${segments.length} response segments after moderator finished.`);
       
     } catch (error) {
-      console.error('Failed to integrate user comment:', error);
+      console.error('Failed to process user comment after speaking:', error);
       setError('Failed to process your comment');
-      setDebugInfo('Error integrating user comment');
+      setDebugInfo('Error processing user comment');
     } finally {
       setIsProcessingUserComment(false);
     }
@@ -1083,7 +969,7 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
                       type="text"
                       value={userInput}
                       onChange={(e) => setUserInput(e.target.value)}
-                      placeholder={`${userName}, what are your thoughts on this discussion?`}
+                      placeholder={`${userName}, share your thoughts (will be acknowledged after current speaker finishes)...`}
                       className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       disabled={isGenerating}
                     />
@@ -1106,7 +992,7 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
                   {(isGenerating || isProcessingUserComment) && (
                     <div className="mt-2 text-sm text-yellow-400 flex items-center">
                       <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-400 mr-2"></div>
-                      {isProcessingUserComment ? `Integrating ${userName}'s comment immediately...` : 'AI moderator is preparing a response...'}
+                      {isProcessingUserComment ? `Queuing ${userName}'s comment - will respond after current speaker finishes...` : 'AI moderator is preparing a response...'}
                     </div>
                   )}
                 </div>
