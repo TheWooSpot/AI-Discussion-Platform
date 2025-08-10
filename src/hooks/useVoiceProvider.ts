@@ -3,8 +3,9 @@ import { VoiceProvider } from '../types/voice';
 import { elevenLabsProvider } from '../services/elevenLabsProvider';
 import { webSpeechProvider } from '../services/webSpeechProvider';
 import { openaiProvider } from '../services/openaiProvider';
+import { geminiVoiceProvider } from '../services/geminiVoiceProvider';
 
-type VoiceProviderType = 'elevenlabs' | 'webspeech' | 'openai';
+type VoiceProviderType = 'elevenlabs' | 'webspeech' | 'openai' | 'gemini';
 
 interface VoiceProviderHook {
   currentProvider: VoiceProvider;
@@ -13,6 +14,7 @@ interface VoiceProviderHook {
   isWebSpeechAvailable: boolean;
   isElevenLabsAvailable: boolean;
   isOpenAIAvailable: boolean;
+  isGeminiAvailable: boolean;
 }
 
 // Create a global state for voice provider
@@ -29,6 +31,7 @@ export const useVoiceProvider = (): VoiceProviderHook => {
   const [isWebSpeechAvailable, setIsWebSpeechAvailable] = useState(false);
   const [isElevenLabsAvailable, setIsElevenLabsAvailable] = useState(false);
   const [isOpenAIAvailable, setIsOpenAIAvailable] = useState(false);
+  const [isGeminiAvailable, setIsGeminiAvailable] = useState(false);
   const [, forceUpdate] = useState({});
 
   // Set up global state management
@@ -65,19 +68,22 @@ export const useVoiceProvider = (): VoiceProviderHook => {
       const webSpeechTest = await webSpeechProvider.testConnection();
       const elevenLabsTest = await elevenLabsProvider.testConnection();
       const openaiTest = await openaiProvider.testConnection();
+      const geminiTest = await geminiVoiceProvider.testConnection();
       
       console.log('🔍 Provider test results:', {
         webSpeech: webSpeechTest,
         elevenLabs: elevenLabsTest,
-        openai: openaiTest
+        openai: openaiTest,
+        gemini: geminiTest
       });
       
       setIsWebSpeechAvailable(webSpeechTest);
       setIsElevenLabsAvailable(elevenLabsTest);
       setIsOpenAIAvailable(openaiTest);
+      setIsGeminiAvailable(geminiTest);
 
-      // Fallback logic: OpenAI -> ElevenLabs -> Web Speech
-      if (!elevenLabsTest && !openaiTest && webSpeechTest) {
+      // Fallback logic: Gemini -> OpenAI -> ElevenLabs -> Web Speech
+      if (!elevenLabsTest && !openaiTest && !geminiTest && webSpeechTest) {
         console.log('🔄 Falling back to Web Speech API');
         setProviderType('webspeech');
       }
@@ -98,6 +104,8 @@ export const useVoiceProvider = (): VoiceProviderHook => {
         return elevenLabsProvider;
       case 'openai':
         return openaiProvider;
+      case 'gemini':
+        return geminiVoiceProvider;
       case 'webspeech':
       default:
         return webSpeechProvider;
@@ -112,6 +120,7 @@ export const useVoiceProvider = (): VoiceProviderHook => {
     setProviderType,
     isWebSpeechAvailable,
     isElevenLabsAvailable,
-    isOpenAIAvailable
+    isOpenAIAvailable,
+    isGeminiAvailable
   };
 };
