@@ -115,6 +115,7 @@ class OpenAIService implements VoiceProvider {
 
   async testConnection(): Promise<boolean> {
     if (!this.apiKey) {
+      console.log('❌ OpenAI API key not configured');
       return false;
     }
 
@@ -124,6 +125,7 @@ class OpenAIService implements VoiceProvider {
           'Authorization': `Bearer ${this.apiKey}`
         }
       });
+      console.log('🔍 OpenAI test response:', response.status);
       return response.ok;
     } catch (error) {
       console.error('OpenAI connection test failed:', error);

@@ -93,19 +93,18 @@ export default function VoiceProviderToggle() {
               {/* OpenAI Option */}
               <button
                 onClick={() => handleProviderChange('openai')}
-                disabled={!isOpenAIAvailable}
                 className={`w-full text-left p-2 rounded text-sm transition-colors ${
                   providerType === 'openai'
                     ? 'bg-blue-600 text-white'
-                    : isOpenAIAvailable
-                      ? 'text-gray-300 hover:bg-gray-700'
-                      : 'text-gray-500 cursor-not-allowed'
+                    : 'text-gray-300 hover:bg-gray-700'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="font-medium">OpenAI TTS</div>
-                    <div className="text-xs opacity-75">High-quality AI voices</div>
+                    <div className="text-xs opacity-75">
+                      {isOpenAIAvailable ? 'High-quality AI voices' : 'Requires API key'}
+                    </div>
                   </div>
                   <div className="text-xs">
                     {providerType === 'openai' && isOpenAIAvailable ? (
@@ -113,7 +112,7 @@ export default function VoiceProviderToggle() {
                     ) : isOpenAIAvailable ? (
                       <span className="text-gray-400">○</span>
                     ) : (
-                      <span className="text-red-400">✗</span>
+                      <span className="text-yellow-400">⚠</span>
                     )}
                   </div>
                 </div>
@@ -122,19 +121,18 @@ export default function VoiceProviderToggle() {
               {/* Gemini Option */}
               <button
                 onClick={() => handleProviderChange('gemini')}
-                disabled={!isGeminiAvailable}
                 className={`w-full text-left p-2 rounded text-sm transition-colors ${
                   providerType === 'gemini'
                     ? 'bg-blue-600 text-white'
-                    : isGeminiAvailable
-                      ? 'text-gray-300 hover:bg-gray-700'
-                      : 'text-gray-500 cursor-not-allowed'
+                    : 'text-gray-300 hover:bg-gray-700'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="font-medium">Gemini TTS</div>
-                    <div className="text-xs opacity-75">Google Cloud voices</div>
+                    <div className="text-xs opacity-75">
+                      {isGeminiAvailable ? 'Google Cloud voices' : 'Requires API key'}
+                    </div>
                   </div>
                   <div className="text-xs">
                     {providerType === 'gemini' && isGeminiAvailable ? (
@@ -142,7 +140,7 @@ export default function VoiceProviderToggle() {
                     ) : isGeminiAvailable ? (
                       <span className="text-gray-400">○</span>
                     ) : (
-                      <span className="text-red-400">✗</span>
+                      <span className="text-yellow-400">⚠</span>
                     )}
                   </div>
                 </div>

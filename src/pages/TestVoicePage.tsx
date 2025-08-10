@@ -215,7 +215,7 @@ const TestVoicePage: React.FC = () => {
               </div>
               <h3 className="text-xl font-semibold">Alex</h3>
               <p className="text-gray-400 text-sm">
-                {getVoiceDescription('alex')}
+                {getVoiceDescription('alex')} {!currentProvider && providerType !== 'webspeech' && <span className="text-yellow-400">(API key needed)</span>}
               </p>
             </div>
 
@@ -248,7 +248,7 @@ const TestVoicePage: React.FC = () => {
               </div>
               <h3 className="text-xl font-semibold">Jordan</h3>
               <p className="text-gray-400 text-sm">
-                {getVoiceDescription('jordan')}
+                {getVoiceDescription('jordan')} {!currentProvider && providerType !== 'webspeech' && <span className="text-yellow-400">(API key needed)</span>}
               </p>
             </div>
 
