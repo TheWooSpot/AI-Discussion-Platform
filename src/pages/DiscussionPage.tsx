@@ -543,13 +543,13 @@ This should be about 3-4 minutes of initial moderator dialogue before users join
       }
     }, 100);
     
-    // Always queue user comments to be processed after current speaker finishes
+    // Process user comment with immediate acknowledgment
     if (!isProcessingUserComment) {
-      await queueUserCommentForProcessing(message);
+      await processUserCommentWithImmediateAcknowledgment(message);
     }
   };
 
-  const queueUserCommentForProcessing = async (userComment: string): Promise<void> => {
+  const processUserCommentWithImmediateAcknowledgment = async (userComment: string): Promise<void> => {
     if (isProcessingUserComment) {
       return;
     }
@@ -558,35 +558,15 @@ This should be about 3-4 minutes of initial moderator dialogue before users join
     
     try {
       if (isPlaying && currentSpeaker) {
-        // A moderator is currently speaking - wait for them to finish
-        setDebugInfo(`${userName}'s comment queued - waiting for ${currentSpeaker} to finish speaking...`);
+        // A moderator is currently speaking - interrupt at natural pause for acknowledgment
+        setDebugInfo(`${userName} commented - preparing immediate acknowledgment from ${currentSpeaker}...`);
         
-        // Set up a listener to process the comment when the current audio segment ends
-        const processAfterCurrentSegment = () => {
-          // Wait a brief moment to ensure the current segment has fully ended
-          setTimeout(() => {
-            if (!isProcessingUserComment) {
-              processUserCommentAfterSpeaking(userComment);
-            }
-          }, 500);
-        };
-        
-        // Monitor for when the current audio segment ends
-        const checkForSegmentEnd = () => {
-          if (currentAudioIndex !== audioQueue.length - 1) {
-            // More segments to play, wait for natural break
-            setTimeout(checkForSegmentEnd, 1000);
-          } else {
-            // This is the last segment or we've moved to next segment
-            processAfterCurrentSegment();
-          }
-        };
-        
-        checkForSegmentEnd();
+        // Interrupt current speaker for immediate acknowledgment
+        await interruptForImmediateAcknowledgment(userComment);
         
       } else {
         // No one is speaking, process immediately
-        await processUserCommentAfterSpeaking(userComment);
+        await processUserCommentWithFullResponse(userComment);
       }
       
     } catch (error) {
@@ -597,35 +577,114 @@ This should be about 3-4 minutes of initial moderator dialogue before users join
     }
   };
 
-  const processUserCommentAfterSpeaking = async (userComment: string): Promise<void> => {
+  const interruptForImmediateAcknowledgment = async (userComment: string): Promise<void> => {
     try {
-      setDebugInfo(`Processing ${userName}'s comment after moderator finished speaking...`);
+      // Stop current audio immediately for acknowledgment
+      if (audioQueue[currentAudioIndex]?.type === 'webspeech') {
+        speechSynthesis.cancel();
+      } else if (audioQueue[currentAudioIndex]?.audio) {
+        audioQueue[currentAudioIndex].audio!.pause();
+      }
+      
+      // Brief pause to simulate natural breathing moment
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Generate immediate acknowledgment from current speaker
+      const acknowledgmentPrompt = `You are ${currentSpeaker} in an ongoing discussion about "${discussion.title}". 
+
+You were just speaking when participant ${userName} made this comment: "${userComment}"
+
+Provide a VERY BRIEF, immediate acknowledgment that feels like a natural breathing pause in your speech:
+
+${currentSpeaker.charAt(0).toUpperCase() + currentSpeaker.slice(1)}: [Brief acknowledgment like "Thanks ${userName}, great point about [key word from their comment]" or "${userName}, excellent insight on [topic]" - keep it to 1 short sentence, maximum 10-12 words]
+
+This should feel like you naturally paused to acknowledge them before continuing your thought.`;
+
+      const acknowledgmentResponse = await geminiService.generateContent(acknowledgmentPrompt);
+      const acknowledgmentSegments = parseDiscussion(acknowledgmentResponse);
+      
+      // Generate and play immediate acknowledgment
+      if (acknowledgmentSegments.length > 0) {
+        const segment = acknowledgmentSegments[0];
+        
+        // Add acknowledgment to chat immediately
+        addChatMessageWithAnimation(segment.speaker, segment.text);
+        
+        // Generate and play acknowledgment audio
+        let acknowledgmentAudio: AudioItem;
+        if (providerType === 'webspeech') {
+          acknowledgmentAudio = await createAudioItem(new Blob(), segment.speaker, segment.text);
+        } else {
+          const audioBlob = await currentProvider.generateSpeech(segment.text, segment.speaker);
+          acknowledgmentAudio = await createAudioItem(audioBlob, segment.speaker, segment.text);
+        }
+        
+        // Play acknowledgment immediately
+        setCurrentSpeaker(segment.speaker);
+        
+        if (acknowledgmentAudio.type === 'webspeech' && acknowledgmentAudio.utterance) {
+          const utterance = acknowledgmentAudio.utterance;
+          
+          utterance.onend = () => {
+            // After acknowledgment, continue with full response
+            setTimeout(() => {
+              processUserCommentWithFullResponse(userComment);
+            }, 500);
+          };
+          
+          speechSynthesis.speak(utterance);
+        } else if (acknowledgmentAudio.type === 'elevenlabs' && acknowledgmentAudio.audio) {
+          const audio = acknowledgmentAudio.audio;
+          
+          audio.onended = () => {
+            // After acknowledgment, continue with full response
+            setTimeout(() => {
+              processUserCommentWithFullResponse(userComment);
+            }, 500);
+          };
+          
+          await audio.play();
+        }
+      }
+      
+      setDebugInfo(`${userName} acknowledged by ${currentSpeaker}, preparing full response...`);
+      
+    } catch (error) {
+      console.error('Failed to provide immediate acknowledgment:', error);
+      // Fallback to full response
+      await processUserCommentWithFullResponse(userComment);
+    }
+  };
+
+  const processUserCommentWithFullResponse = async (userComment: string): Promise<void> => {
+    try {
+      setDebugInfo(`Processing ${userName}'s comment with full moderator response...`);
       
       // Determine which moderator should respond (alternate or choose randomly)
       const respondingModerator = Math.random() > 0.5 ? 'alex' : 'jordan';
       const otherModerator = respondingModerator === 'alex' ? 'jordan' : 'alex';
       
-      const prompt = `You are facilitating an ongoing discussion about "${discussion.title}" - ${discussion.description}.
+      const prompt = `You are continuing an ongoing discussion about "${discussion.title}" - ${discussion.description}.
 
-The discussion between Alex and Jordan has just reached a natural pause when participant ${userName} contributes this insightful comment: "${userComment}"
+Participant ${userName} has just contributed this comment: "${userComment}"
 
-Since no moderator is currently speaking, create a natural, facilitative response where both moderators acknowledge and build upon ${userName}'s contribution:
+Create a natural, facilitative response where both moderators build upon ${userName}'s contribution (they may have already briefly acknowledged it):
 
-1. ${respondingModerator.toUpperCase()}: Acknowledges ${userName} by name and identifies the key insights in their comment: "${userName}, that's an excellent point about [specific aspect from their comment]." Then diplomatically weaves 1-2 key notions from ${userName}'s input into their response, connecting it back to the main topic - 2-3 sentences.
+1. ${respondingModerator.toUpperCase()}: Expands on ${userName}'s insight with something like "Building on what ${userName} shared about [specific aspect]..." and then weaves their input into deeper analysis - 2-3 sentences.
 
-2. ${otherModerator.toUpperCase()}: Builds directly on ${userName}'s contribution with something like "${userName} raises a crucial point about [specific aspect from their comment]..." and then expands meaningfully on their insight, showing how it enhances the discussion - 2-3 sentences.
+2. ${otherModerator.toUpperCase()}: Continues the discussion by connecting ${userName}'s perspective to broader implications: "What ${userName} mentioned about [aspect] really highlights..." - 2-3 sentences.
 
-3. ${respondingModerator.toUpperCase()}: Continues the facilitative discussion, incorporating ${userName}'s perspective as a valuable addition that deepens the conversation about "${discussion.title}" - 2-3 sentences.
+3. ${respondingModerator.toUpperCase()}: Synthesizes the discussion including ${userName}'s contribution and moves the conversation forward - 2-3 sentences.
 
-The response should feel like professional moderators acknowledging a valuable participant contribution after a natural pause in the discussion.
+The response should feel like professional moderators building meaningfully on ${userName}'s valuable contribution.
 
 Format with clear speaker labels:
 
-${respondingModerator.charAt(0).toUpperCase() + respondingModerator.slice(1)}: [Acknowledges ${userName} by name, identifies key insights from their comment, and weaves their input into the discussion - 2-3 sentences]
+${respondingModerator.charAt(0).toUpperCase() + respondingModerator.slice(1)}: [Expands on ${userName}'s insight and weaves it into deeper analysis - 2-3 sentences]
 
-${otherModerator.charAt(0).toUpperCase() + otherModerator.slice(1)}: [Builds directly on ${userName}'s specific contribution and expands on their insights - 2-3 sentences]
+${otherModerator.charAt(0).toUpperCase() + otherModerator.slice(1)}: [Connects ${userName}'s perspective to broader implications - 2-3 sentences]
 
-${respondingModerator.charAt(0).toUpperCase() + respondingModerator.slice(1)}: [Continues the facilitative discussion with ${userName}'s perspective now woven in - 2-3 sentences]
+${respondingModerator.charAt(0).toUpperCase() + respondingModerator.slice(1)}: [Synthesizes and moves the conversation forward - 2-3 sentences]
 
 Make ${userName} feel genuinely heard and valued as a contributor to this facilitative discussion.`;
       
@@ -671,7 +730,7 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
       setDebugInfo(`${userName}'s comment processed with ${segments.length} response segments after moderator finished.`);
       
     } catch (error) {
-      console.error('Failed to process user comment after speaking:', error);
+      console.error('Failed to process user comment with full response:', error);
       setError('Failed to process your comment');
       setDebugInfo('Error processing user comment');
     } finally {
@@ -969,7 +1028,7 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
                       type="text"
                       value={userInput}
                       onChange={(e) => setUserInput(e.target.value)}
-                      placeholder={`${userName}, share your thoughts (will be acknowledged after current speaker finishes)...`}
+                      placeholder={`${userName}, share your thoughts (will be acknowledged immediately)...`}
                       className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       disabled={isGenerating}
                     />
@@ -992,7 +1051,7 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
                   {(isGenerating || isProcessingUserComment) && (
                     <div className="mt-2 text-sm text-yellow-400 flex items-center">
                       <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-400 mr-2"></div>
-                      {isProcessingUserComment ? `Queuing ${userName}'s comment - will respond after current speaker finishes...` : 'AI moderator is preparing a response...'}
+                      {isProcessingUserComment ? `Processing ${userName}'s comment with immediate acknowledgment...` : 'AI moderator is preparing a response...'}
                     </div>
                   )}
                 </div>
