@@ -37,6 +37,8 @@ const DiscussionPage: React.FC = () => {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [commentQueue, setCommentQueue] = useState<QueuedComment[]>([]);
   const [isProcessingQueue, setIsProcessingQueue] = useState(false);
+  const [showJoinPopup, setShowJoinPopup] = useState(true);
+  const [tempUserName, setTempUserName] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -436,6 +438,19 @@ Requirements:
     setIsPlaying(false);
   };
 
+  const handleJoinDiscussion = () => {
+    if (tempUserName.trim()) {
+      setUserName(tempUserName.trim());
+      setShowJoinPopup(false);
+    }
+  };
+
+  const handleClosePopup = () => {
+    setShowJoinPopup(false);
+    // Navigate back to explore page
+    window.history.back();
+  };
+
   const getSpeakerColor = (speaker: string): string => {
     switch (speaker) {
       case 'alex':
@@ -464,6 +479,53 @@ Requirements:
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
+      {/* Join Discussion Popup */}
+      {showJoinPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 relative">
+            {/* Close button */}
+            <button
+              onClick={handleClosePopup}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+            >
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold text-white mb-2">Join Discussion</h2>
+              <h3 className="text-lg text-blue-400 mb-2">{currentTopic.title}</h3>
+              <p className="text-gray-300 text-sm">{currentTopic.description}</p>
+            </div>
+            
+            <div className="mb-6">
+              <label htmlFor="userName" className="block text-sm font-medium text-gray-300 mb-2">
+                Enter your name to join the conversation:
+              </label>
+              <input
+                type="text"
+                id="userName"
+                value={tempUserName}
+                onChange={(e) => setTempUserName(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleJoinDiscussion()}
+                placeholder="Your name..."
+                className="w-full bg-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+            </div>
+            
+            <button
+              onClick={handleJoinDiscussion}
+              disabled={!tempUserName.trim()}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+            >
+              Join Conversation
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -566,7 +628,7 @@ Requirements:
             ) : (
               <div className="space-y-4">
                 {/* User Name Input */}
-                {!userName && (
+                {!userName && !showJoinPopup && (
                   <div>
                     <input
                       type="text"
