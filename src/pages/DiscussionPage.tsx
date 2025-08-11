@@ -622,17 +622,15 @@ This should be about 3-4 minutes of initial moderator dialogue before users join
       await waitForCurrentSegmentToFinish;
       
       // Now generate professional acknowledgment from the same speaker who was just speaking
-      const acknowledgmentPrompt = `The user "${userName}" just made this comment: "${userComment}". 
+      const acknowledgmentPrompt = `You are ${currentSpeaker} in an ongoing discussion about "${discussion.title}". 
 
-          As ${currentSpeaker}, you must ONLY do these two things:
-          1. Briefly acknowledge: "Thanks [Name], [2-3 word summary]" 
-          2. Then continue the natural discussion flow
-          
-          CRITICAL: Do NOT get sidetracked by the user's comment. Simply acknowledge it briefly and continue the original discussion naturally. The acknowledgment should be no more than 6-8 words total.
-          
-          Example: "Thanks Sarah, interesting perspective. Now, as we were discussing..."
-          
-          Continue the three-person conversation naturally without being derailed by the user's input.`;
+You just finished making a statement when participant ${userName} made this comment: "${userComment}"
+
+Provide a professional acknowledgment that naturally follows your previous statement:
+
+${currentSpeaker.charAt(0).toUpperCase() + currentSpeaker.slice(1)}: [Professional acknowledgment like "Thank you ${userName}, that's an excellent point about [key aspect from their comment]" or "${userName}, I appreciate your insight on [specific topic they mentioned]" - keep it to 1-2 sentences, acknowledging both their name and summarizing their key point]
+
+This should feel like a natural, professional acknowledgment before you continue with the broader discussion.`;
 
       const acknowledgmentResponse = await geminiService.generateContent(acknowledgmentPrompt);
       const acknowledgmentSegments = parseDiscussion(acknowledgmentResponse);
