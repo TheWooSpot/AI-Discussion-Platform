@@ -1193,8 +1193,9 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
           </div>
         </div>
       </div>
-    </div>
   );
+  </div>
+ );
 };
 
 export default DiscussionPage;
