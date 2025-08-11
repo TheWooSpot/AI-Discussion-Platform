@@ -6,7 +6,8 @@ import {
   StopIcon, 
   MicrophoneIcon,
   SpeakerWaveIcon,
-  ArrowLeftIcon
+  ArrowLeftIcon,
+  PaperAirplaneIcon
 } from '@heroicons/react/24/solid';
 import { geminiService } from '../services/gemini';
 import { useVoiceProvider } from '../hooks/useVoiceProvider';
@@ -631,7 +632,7 @@ This should be about 3-4 minutes of initial moderator dialogue before users join
       
       // Now generate professional acknowledgment from the same speaker who was just speaking
       // Generate acknowledgment + continuation prompt
-      const acknowledgmentPrompt = `You are ${currentSpeaker} in an ongoing discussion about "${discussionTopic}". 
+      const acknowledgmentPrompt = `You are ${currentSpeaker} in an ongoing discussion about "${discussion.title}". 
       
       A user named "${userName}" just made this comment: "${userComment}"
       
@@ -709,7 +710,7 @@ This should be about 3-4 minutes of initial moderator dialogue before users join
       // Generate continuation of discussion that incorporates user's input
       const otherSpeaker = currentSpeaker === 'alex' ? 'jordan' : 'alex';
       
-      const fullResponsePrompt = `You are ${currentSpeaker} and ${otherSpeaker} continuing your discussion about "${discussionTopic}".
+      const fullResponsePrompt = `You are ${currentSpeaker} and ${otherSpeaker} continuing your discussion about "${discussion.title}".
       
       A user named "${userName}" made this comment: "${userComment}"
       
@@ -1192,10 +1193,10 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
             </div>
           </div>
         </div>
+        </div>
       </div>
+    </div>
   );
-  </div>
- );
 };
 
 export default DiscussionPage;
