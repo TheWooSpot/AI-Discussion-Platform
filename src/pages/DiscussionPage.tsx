@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { PlayIcon, PauseIcon, MicrophoneIcon, PaperAirplaneIcon } from '@heroicons/react/24/solid';
+import { useParams, useNavigate } from 'react-router-dom';
+import { 
+  PlayIcon, 
+  PauseIcon, 
+  StopIcon, 
+  MicrophoneIcon,
+  SpeakerWaveIcon,
+  ArrowLeftIcon
+} from '@heroicons/react/24/solid';
 import { geminiService } from '../services/gemini';
 import { useVoiceProvider } from '../hooks/useVoiceProvider';
 
@@ -66,6 +73,7 @@ interface ChatMessage {
 
 const DiscussionPage: React.FC = () => {
   const { topicId } = useParams<{ topicId: string }>();
+  const navigate = useNavigate();
   const { currentProvider, providerType } = useVoiceProvider();
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -622,15 +630,21 @@ This should be about 3-4 minutes of initial moderator dialogue before users join
       await waitForCurrentSegmentToFinish;
       
       // Now generate professional acknowledgment from the same speaker who was just speaking
-      const acknowledgmentPrompt = `You are ${currentSpeaker} in an ongoing discussion about "${discussion.title}". 
-
-You just finished making a statement when participant ${userName} made this comment: "${userComment}"
-
-Provide a professional acknowledgment that naturally follows your previous statement:
-
-${currentSpeaker.charAt(0).toUpperCase() + currentSpeaker.slice(1)}: [Professional acknowledgment like "Thank you ${userName}, that's an excellent point about [key aspect from their comment]" or "${userName}, I appreciate your insight on [specific topic they mentioned]" - keep it to 1-2 sentences, acknowledging both their name and summarizing their key point]
-
-This should feel like a natural, professional acknowledgment before you continue with the broader discussion.`;
+      // Generate acknowledgment + continuation prompt
+      const acknowledgmentPrompt = `You are ${currentSpeaker} in an ongoing discussion about "${discussionTopic}". 
+      
+      A user named "${userName}" just made this comment: "${userComment}"
+      
+      You need to provide a VERY brief acknowledgment that includes:
+      1. Thank the user by name
+      2. A 2-3 word summary of their comment  
+      3. Then add a phrase indicating you're continuing your previous thoughts
+      
+      Format: "Thanks [Name], [2-3 word summary]. Now, continuing with our discussion..." or similar.
+      
+      Keep it under 15 words total. Do NOT get sidetracked by their comment - just acknowledge and continue.
+      
+      Example: "Thanks Sarah, interesting point. Now, continuing with our discussion..."`;
 
       const acknowledgmentResponse = await geminiService.generateContent(acknowledgmentPrompt);
       const acknowledgmentSegments = parseDiscussion(acknowledgmentResponse);
@@ -693,20 +707,24 @@ This should feel like a natural, professional acknowledgment before you continue
       setDebugInfo(`${currentSpeaker} continuing discussion after acknowledging ${userName}...`);
       
       // Generate continuation of discussion that incorporates user's input
-      const continuationPrompt = `You are ${currentSpeaker} in an ongoing discussion about "${discussion.title}". 
+      const otherSpeaker = currentSpeaker === 'alex' ? 'jordan' : 'alex';
+      
+      const fullResponsePrompt = `You are ${currentSpeaker} and ${otherSpeaker} continuing your discussion about "${discussionTopic}".
+      
+      A user named "${userName}" made this comment: "${userComment}"
+      
+      Continue your natural discussion as ${currentSpeaker} and ${otherSpeaker}, incorporating the user's perspective where relevant. 
+      
+      Make sure both moderators acknowledge the user's input naturally in the conversation flow.
+      Keep the discussion engaging and ensure both voices participate.
+      
+      Format with clear speaker labels:
+      ${currentSpeaker}: [response]
+      ${otherSpeaker}: [response]
+      ${currentSpeaker}: [response]
+      (continue alternating as needed)`;
 
-You just acknowledged participant ${userName} who commented: "${userComment}"
-
-Now continue the discussion by:
-1. Briefly building on ${userName}'s contribution 
-2. Weaving their insight into the broader discussion
-3. Continuing with your original line of thought, enhanced by their input
-
-${currentSpeaker.charAt(0).toUpperCase() + currentSpeaker.slice(1)}: [Continue the discussion by incorporating ${userName}'s insight: "Building on what ${userName} mentioned about [their key point], this really connects to..." - 2-3 sentences that naturally flow from your acknowledgment]
-
-Keep it natural and conversational, as if you're seamlessly incorporating their valuable input into your ongoing discussion.`;
-
-      const continuationResponse = await geminiService.generateContent(continuationPrompt);
+      const continuationResponse = await geminiService.generateContent(fullResponsePrompt);
       const continuationSegments = parseDiscussion(continuationResponse);
       
       // Generate audio for continuation
@@ -850,8 +868,21 @@ Make ${userName} feel genuinely heard and valued as a contributor to this facili
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Back to Discussions Button */}
+        <div className="mb-6">
+          <button
+            onClick={() => navigate('/discussion/explore')}
+            className="flex items-center space-x-2 text-gray-400 hover:text-white transition-colors"
+          >
+            <ArrowLeftIcon className="h-5 w-5" />
+            <span>Back to Discussions</span>
+          </button>
+        </div>
+
+        {/* Discussion Header */}
+        <div className="text-center mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Left Sidebar */}
           <div className="lg:col-span-1">
             <div className="bg-gray-800 rounded-lg p-6 sticky top-8">
