@@ -334,13 +334,10 @@ A user named "${commenterName}" just commented: "${commentText}"
 Please provide a response where one of the moderators (Alex or Jordan) briefly acknowledges the user and then continues the discussion. Follow this format:
 
 [Moderator Name]: Thanks ${commenterName}, [2-3 word summary]. Now, continuing with our discussion... [new discussion content that builds on the topic]
-
 Requirements:
-- Acknowledgment must be under 15 words total
 - Use "Thanks [Name], [brief summary]. Now, continuing with our discussion..." format
 - Do NOT repeat any previous statements
 - Provide fresh discussion content that incorporates the user's perspective
-- Keep the same professional tone as the original discussion
 - Choose either Alex or Jordan to respond (alternate between them)`;
 
       const responseText = await geminiService.generateContent(prompt);
