@@ -3,9 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   PlayIcon, 
   PauseIcon, 
-  StopIcon, 
   MicrophoneIcon,
-  SpeakerWaveIcon,
   ArrowLeftIcon,
   PaperAirplaneIcon
 } from '@heroicons/react/24/solid';
@@ -614,7 +612,7 @@ This should be about 3-4 minutes of initial moderator dialogue before users join
           } else if (currentAudioItem.type === 'elevenlabs' && currentAudioItem.audio) {
             const originalOnEnded = currentAudioItem.audio.onended;
             currentAudioItem.audio.onended = () => {
-              if (originalOnEnded) originalOnEnded();
+              if (originalOnEnded) originalOnEnded(ev);
               // Brief pause before acknowledgment (natural breathing moment)
               setTimeout(resolve, 500);
             };
