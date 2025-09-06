@@ -612,7 +612,7 @@ This should be about 3-4 minutes of initial moderator dialogue before users join
           } else if (currentAudioItem.type === 'elevenlabs' && currentAudioItem.audio) {
             const originalOnEnded = currentAudioItem.audio.onended;
             currentAudioItem.audio.onended = () => {
-              if (originalOnEnded) originalOnEnded(ev);
+              if (originalOnEnded) originalOnEnded.call(audio, event);
               // Brief pause before acknowledgment (natural breathing moment)
               setTimeout(resolve, 500);
             };
